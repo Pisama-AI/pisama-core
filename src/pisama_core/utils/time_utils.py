@@ -9,5 +9,5 @@ def now_utc() -> datetime:
 
 
 def parse_iso_datetime(s: str) -> datetime:
-    """Parse ISO format datetime string."""
-    return datetime.fromisoformat(s)
+    """Parse ISO 8601 timestamps consistently on Python 3.10 and newer."""
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))

@@ -11,6 +11,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
+from pisama_core.utils.time_utils import parse_iso_datetime
 
 
 def _generate_id() -> str:
@@ -48,7 +49,7 @@ class Event:
         """Create from dictionary."""
         return cls(
             name=data["name"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
+            timestamp=parse_iso_datetime(data["timestamp"]),
             attributes=data.get("attributes", {}),
         )
 
@@ -148,10 +149,8 @@ class Span:
             kind=SpanKind(data.get("kind", "system")),
             platform=Platform(data.get("platform", "generic")),
             platform_metadata=data.get("platform_metadata", {}),
-            start_time=datetime.fromisoformat(data["start_time"])
-            if "start_time" in data
-            else _now(),
-            end_time=datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None,
+            start_time=parse_iso_datetime(data["start_time"]) if "start_time" in data else _now(),
+            end_time=parse_iso_datetime(data["end_time"]) if data.get("end_time") else None,
             status=SpanStatus(data.get("status", "unset")),
             error_message=data.get("error_message"),
             attributes=data.get("attributes", {}),
@@ -208,9 +207,7 @@ class TraceMetadata:
             platform_version=data.get("platform_version"),
             environment=data.get("environment", "development"),
             host=data.get("host"),
-            created_at=datetime.fromisoformat(data["created_at"])
-            if "created_at" in data
-            else _now(),
+            created_at=parse_iso_datetime(data["created_at"]) if "created_at" in data else _now(),
             tags=data.get("tags", {}),
             custom=data.get("custom", {}),
         )
