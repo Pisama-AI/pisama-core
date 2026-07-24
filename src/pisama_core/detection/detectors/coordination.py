@@ -2,8 +2,8 @@
 
 from pisama_core.detection.base import BaseDetector
 from pisama_core.detection.result import DetectionResult, FixType
-from pisama_core.traces.models import Trace
 from pisama_core.traces.enums import Platform, SpanKind
+from pisama_core.traces.models import Trace
 
 
 class CoordinationDetector(BaseDetector):
@@ -19,7 +19,13 @@ class CoordinationDetector(BaseDetector):
     name = "coordination"
     description = "Detects multi-agent coordination failures"
     version = "1.0.0"
-    platforms = [Platform.LANGGRAPH, Platform.AUTOGEN, Platform.CREWAI, Platform.OPENCLAW, Platform.DIFY]
+    platforms = [
+        Platform.LANGGRAPH,
+        Platform.AUTOGEN,
+        Platform.CREWAI,
+        Platform.OPENCLAW,
+        Platform.DIFY,
+    ]
     severity_range = (30, 80)
     realtime_capable = False  # Needs full trace context
 
@@ -47,6 +53,7 @@ class CoordinationDetector(BaseDetector):
         unique_agents = set(agent_names)
         if len(unique_agents) >= 2:
             from collections import Counter
+
             counts = Counter(agent_names)
             max_count = max(counts.values())
             min_count = min(counts.values())
@@ -63,11 +70,13 @@ class CoordinationDetector(BaseDetector):
             issues.append(f"Excessive handoffs ({len(handoffs)}) - possible coordination loop")
 
         # OpenClaw-specific: detect session spawn storms
-        if trace.platform == Platform.OPENCLAW:
+        if trace.metadata.platform == Platform.OPENCLAW:
             spawn_spans = [s for s in handoffs if "spawn" in s.name.lower()]
             if len(spawn_spans) > 5:
                 severity += 35
-                issues.append(f"Session spawn storm ({len(spawn_spans)} spawns) - agents spawning without converging")
+                issues.append(
+                    f"Session spawn storm ({len(spawn_spans)} spawns) - agents spawning without converging"
+                )
 
             # Detect circular routing via sessions_send
             send_spans = [s for s in handoffs if "send" in s.name.lower()]
@@ -76,7 +85,7 @@ class CoordinationDetector(BaseDetector):
                 receivers = [s.attributes.get("target_agent", "") for s in send_spans]
                 pairs = list(zip(senders, receivers))
                 for i, (s1, r1) in enumerate(pairs):
-                    for s2, r2 in pairs[i + 1:]:
+                    for s2, r2 in pairs[i + 1 :]:
                         if s1 == r2 and s2 == r1:
                             severity += 40
                             issues.append(f"Circular routing: {s1} <-> {s2}")

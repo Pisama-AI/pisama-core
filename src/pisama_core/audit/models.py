@@ -70,6 +70,7 @@ class AuditEvent:
 
     def to_json(self) -> str:
         import json
+
         return json.dumps(self.to_dict())
 
     @classmethod

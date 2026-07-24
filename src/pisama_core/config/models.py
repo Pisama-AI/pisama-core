@@ -1,4 +1,4 @@
-"""Configuration models for PISAMA."""
+"""Configuration models for Pisama."""
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -21,15 +21,19 @@ class HealingConfig:
 
     enabled: bool = True
     mode: str = "manual"  # report, manual, auto
-    auto_fix_types: list[str] = field(default_factory=lambda: [
-        "break_loop",
-        "switch_strategy",
-        "escalate",
-    ])
-    blocked_fix_types: list[str] = field(default_factory=lambda: [
-        "terminate",
-        "rollback",
-    ])
+    auto_fix_types: list[str] = field(
+        default_factory=lambda: [
+            "break_loop",
+            "switch_strategy",
+            "escalate",
+        ]
+    )
+    blocked_fix_types: list[str] = field(
+        default_factory=lambda: [
+            "terminate",
+            "rollback",
+        ]
+    )
     max_auto_fixes: int = 10
     cooldown_seconds: int = 30
 
@@ -56,7 +60,7 @@ class InjectionConfig:
 
 @dataclass
 class PisamaConfig:
-    """Complete PISAMA configuration."""
+    """Complete Pisama configuration."""
 
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     healing: HealingConfig = field(default_factory=HealingConfig)
@@ -116,7 +120,9 @@ class PisamaConfig:
             healing=HealingConfig(
                 enabled=healing_data.get("enabled", True),
                 mode=healing_data.get("mode", "manual"),
-                auto_fix_types=healing_data.get("auto_fix_types", ["break_loop", "switch_strategy", "escalate"]),
+                auto_fix_types=healing_data.get(
+                    "auto_fix_types", ["break_loop", "switch_strategy", "escalate"]
+                ),
                 blocked_fix_types=healing_data.get("blocked_fix_types", ["terminate", "rollback"]),
                 max_auto_fixes=healing_data.get("max_auto_fixes", 10),
                 cooldown_seconds=healing_data.get("cooldown_seconds", 30),
@@ -131,7 +137,9 @@ class PisamaConfig:
                 enabled=injection_data.get("enabled", True),
                 default_level=injection_data.get("default_level", "suggest"),
                 block_threshold=injection_data.get("block_threshold", 60),
-                max_violations_before_escalation=injection_data.get("max_violations_before_escalation", 3),
+                max_violations_before_escalation=injection_data.get(
+                    "max_violations_before_escalation", 3
+                ),
             ),
             ignored_patterns=data.get("ignored_patterns", []),
         )

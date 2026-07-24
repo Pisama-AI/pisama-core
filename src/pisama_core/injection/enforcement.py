@@ -1,17 +1,17 @@
 """Enforcement levels and engine for fix injection."""
 
-from enum import IntEnum
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import Any
 
 
 class EnforcementLevel(IntEnum):
     """Levels of enforcement for fix injection."""
 
-    SUGGEST = 1      # Soft suggestion
-    DIRECT = 2       # Direct instruction
-    BLOCK = 3        # Block until compliance
-    TERMINATE = 4    # Force terminate
+    SUGGEST = 1  # Soft suggestion
+    DIRECT = 2  # Direct instruction
+    BLOCK = 3  # Block until compliance
+    TERMINATE = 4  # Force terminate
 
     def __str__(self) -> str:
         return self.name.lower()

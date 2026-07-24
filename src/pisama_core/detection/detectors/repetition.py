@@ -2,8 +2,8 @@
 
 from pisama_core.detection.base import BaseDetector
 from pisama_core.detection.result import DetectionResult, FixType
-from pisama_core.traces.models import Trace, Span
 from pisama_core.traces.enums import SpanKind
+from pisama_core.traces.models import Span, Trace
 
 
 class RepetitionDetector(BaseDetector):

@@ -15,7 +15,7 @@ Example:
     tokenized = tokenizer.tokenize_dict(trace)
 
     # Detokenize (for debugging with proper authorization)
-    original = tokenizer.detokenize_string(result, reason="INC-123")
+    original = tokenizer.detokenize_string(result, reason="INC-123", principal="alice@example.com")
 """
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from pisama_core.tokenization.detector import PIIDetector, PIIMatch, PIIPattern
 from pisama_core.tokenization.generator import TokenGenerator, TokenParser
+from pisama_core.tokenization.keychain import KeychainManager
 from pisama_core.tokenization.vault import TokenVault
-from pisama_core.tokenization.keychain import KeychainManager, KeychainError
 
 
 @dataclass
@@ -148,7 +148,7 @@ class Tokenizer:
 
             return self._vault, self._encryption_key
 
-        except Exception as e:
+        except Exception:
             if self.fail_open:
                 return None, None
             raise
@@ -190,10 +190,6 @@ class Tokenizer:
             return text
 
         try:
-            import time
-
-            start = time.perf_counter()
-
             # Detect PII
             matches = self._detector.detect(text)
 
@@ -230,7 +226,7 @@ class Tokenizer:
 
             return result
 
-        except Exception as e:
+        except Exception:
             self._stats.errors += 1
             if self.fail_open:
                 return text
@@ -256,7 +252,7 @@ class Tokenizer:
 
         try:
             return self._tokenize_value(data, fields_to_tokenize)
-        except Exception as e:
+        except Exception:
             self._stats.errors += 1
             if self.fail_open:
                 return data
@@ -276,16 +272,10 @@ class Tokenizer:
             return value
 
         elif isinstance(value, dict):
-            return {
-                k: self._tokenize_value(v, fields_to_tokenize, k)
-                for k, v in value.items()
-            }
+            return {k: self._tokenize_value(v, fields_to_tokenize, k) for k, v in value.items()}
 
         elif isinstance(value, list):
-            return [
-                self._tokenize_value(item, fields_to_tokenize, current_field)
-                for item in value
-            ]
+            return [self._tokenize_value(item, fields_to_tokenize, current_field) for item in value]
 
         else:
             return value
@@ -294,6 +284,7 @@ class Tokenizer:
         self,
         text: str,
         reason: str,
+        principal: str,
         ticket: str | None = None,
     ) -> str:
         """Detokenize a string (reveal original PII values).
@@ -301,6 +292,9 @@ class Tokenizer:
         Args:
             text: Text containing tokens.
             reason: Justification for detokenization (logged for audit).
+            principal: Authenticated user/service performing the detokenization
+                (logged for audit; pass the request user's email/id from the
+                API context, not an OS env var).
             ticket: Optional incident ticket reference.
 
         Returns:
@@ -323,6 +317,7 @@ class Tokenizer:
         self._log_detokenization(
             tokens=[m.group() for m in matches],
             reason=reason,
+            principal=principal,
             ticket=ticket,
         )
 
@@ -341,6 +336,7 @@ class Tokenizer:
         self,
         data: dict[str, Any],
         reason: str,
+        principal: str,
         ticket: str | None = None,
     ) -> dict[str, Any]:
         """Detokenize a dictionary structure.
@@ -348,29 +344,30 @@ class Tokenizer:
         Args:
             data: Dictionary containing tokens.
             reason: Justification for detokenization.
+            principal: Authenticated user/service performing the detokenization.
             ticket: Optional incident ticket reference.
 
         Returns:
             Dictionary with tokens replaced by original values.
         """
-        return self._detokenize_value(data, reason, ticket)
+        return self._detokenize_value(data, reason, principal, ticket)
 
     def _detokenize_value(
         self,
         value: Any,
         reason: str,
+        principal: str,
         ticket: str | None,
     ) -> Any:
         """Recursively detokenize a value."""
         if isinstance(value, str):
-            return self.detokenize_string(value, reason, ticket)
+            return self.detokenize_string(value, reason, principal, ticket)
         elif isinstance(value, dict):
             return {
-                k: self._detokenize_value(v, reason, ticket)
-                for k, v in value.items()
+                k: self._detokenize_value(v, reason, principal, ticket) for k, v in value.items()
             }
         elif isinstance(value, list):
-            return [self._detokenize_value(item, reason, ticket) for item in value]
+            return [self._detokenize_value(item, reason, principal, ticket) for item in value]
         else:
             return value
 
@@ -378,18 +375,17 @@ class Tokenizer:
         self,
         tokens: list[str],
         reason: str,
+        principal: str,
         ticket: str | None,
     ) -> None:
         """Log a detokenization request to the audit log."""
-        import os
-
         audit_log_path = self._vault_path.parent / "audit_log.jsonl"
 
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": "detokenize",
             "session_id": self.session_id,
-            "principal": os.environ.get("USER", "unknown"),
+            "principal": principal,
             "tokens_count": len(tokens),
             "reason": reason,
             "ticket": ticket,

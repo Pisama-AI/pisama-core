@@ -19,12 +19,11 @@ Example:
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import os
 import sqlite3
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
@@ -287,7 +286,7 @@ class TokenVault:
                     encrypted.iv,
                     value_hash,
                     session_id,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                 ),
             )
             conn.commit()
@@ -518,9 +517,9 @@ class TokenVault:
             "SELECT pii_type, COUNT(*) as c FROM tokens GROUP BY pii_type"
         ).fetchall()
 
-        sessions = conn.execute(
-            "SELECT COUNT(DISTINCT session_id) as c FROM tokens"
-        ).fetchone()["c"]
+        sessions = conn.execute("SELECT COUNT(DISTINCT session_id) as c FROM tokens").fetchone()[
+            "c"
+        ]
 
         return {
             "total_tokens": total,

@@ -1,8 +1,6 @@
 """Tests for pisama_core.injection module."""
 
-import pytest
-
-from pisama_core.injection.enforcement import EnforcementLevel, EnforcementEngine
+from pisama_core.injection.enforcement import EnforcementEngine, EnforcementLevel
 from pisama_core.injection.protocol import FixInjectionProtocol
 
 
@@ -155,7 +153,7 @@ class TestFixInjectionProtocol:
         protocol = FixInjectionProtocol()
 
         # Format simple creates and stores a directive internally
-        formatted = protocol.format_simple(
+        protocol.format_simple(
             action="test",
             instruction="Test instruction",
             reason="Test reason",

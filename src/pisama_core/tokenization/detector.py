@@ -168,8 +168,7 @@ class PIIDetector:
         self._patterns: dict[str, PIIPattern] = {}
         self._exclusions: set[str] = set(exclusions or DEFAULT_EXCLUSIONS)
         self._sensitive_fields: set[str] = set(
-            sensitive_fields
-            or ["password", "secret", "api_key", "token", "credential", "ssn"]
+            sensitive_fields or ["password", "secret", "api_key", "token", "credential", "ssn"]
         )
 
         # Load default or custom patterns

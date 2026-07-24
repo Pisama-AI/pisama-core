@@ -2,8 +2,10 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
 from enum import Enum
+from typing import Any, Optional
+
+from pisama_core.detection.diagnosis import DiagnosisRecord
 
 
 class FixType(str, Enum):
@@ -101,11 +103,21 @@ class DetectionResult:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     execution_time_ms: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    diagnosis_record: Optional[dict[str, Any]] = None
 
     @property
     def has_recommendation(self) -> bool:
         """Whether this result includes a fix recommendation."""
         return self.recommendation is not None
+
+    @property
+    def diagnosis(self) -> Optional[DiagnosisRecord]:
+        """Typed view of the optional server diagnosis payload."""
+
+        return DiagnosisRecord.from_dict(self.diagnosis_record) if self.diagnosis_record else None
+
+    def set_diagnosis(self, diagnosis: DiagnosisRecord) -> None:
+        self.diagnosis_record = diagnosis.to_dict()
 
     @property
     def all_recommendations(self) -> list[FixRecommendation]:
@@ -145,6 +157,7 @@ class DetectionResult:
             "timestamp": self.timestamp.isoformat(),
             "execution_time_ms": self.execution_time_ms,
             "metadata": self.metadata,
+            "diagnosis_record": self.diagnosis_record,
         }
 
     @classmethod

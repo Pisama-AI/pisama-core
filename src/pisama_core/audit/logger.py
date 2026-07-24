@@ -1,8 +1,8 @@
-"""Audit logger for PISAMA."""
+"""Audit logger for Pisama."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from datetime import datetime, timezone
 
 from pisama_core.audit.models import AuditEvent, AuditEventType
 from pisama_core.detection.result import DetectionResult
@@ -79,7 +79,9 @@ class AuditLogger:
         platform: str = "unknown",
     ) -> AuditEvent:
         """Log a detection result."""
-        event_type = AuditEventType.ISSUE_DETECTED if result.detected else AuditEventType.DETECTION_RUN
+        event_type = (
+            AuditEventType.ISSUE_DETECTED if result.detected else AuditEventType.DETECTION_RUN
+        )
 
         return self.log(
             event_type=event_type,
@@ -142,7 +144,9 @@ class AuditLogger:
         platform: str = "unknown",
     ) -> AuditEvent:
         """Log compliance with a directive."""
-        event_type = AuditEventType.COMPLIANCE_RECORDED if complied else AuditEventType.VIOLATION_RECORDED
+        event_type = (
+            AuditEventType.COMPLIANCE_RECORDED if complied else AuditEventType.VIOLATION_RECORDED
+        )
 
         return self.log(
             event_type=event_type,
@@ -180,12 +184,13 @@ class AuditLogger:
         limit: int = 100,
     ) -> list[AuditEvent]:
         """Get audit events matching criteria."""
-        events = []
+        events: list[AuditEvent] = []
 
         if not self.log_file.exists():
             return events
 
         import json
+
         with open(self.log_file) as f:
             for line in f:
                 if not line.strip():

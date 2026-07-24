@@ -1,10 +1,8 @@
 """Tests for pisama_core.scoring module."""
 
-import pytest
-
-from pisama_core.scoring.engine import ScoringEngine
-from pisama_core.scoring.thresholds import Thresholds, SeverityLevel
 from pisama_core.detection.result import DetectionResult
+from pisama_core.scoring.engine import ScoringEngine
+from pisama_core.scoring.thresholds import SeverityLevel, Thresholds
 
 
 class TestSeverityLevel:

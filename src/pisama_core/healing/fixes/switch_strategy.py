@@ -29,6 +29,7 @@ class SwitchStrategyFix(BaseFix):
 
         if context.adapter:
             from pisama_core.injection.enforcement import EnforcementLevel
+
             context.adapter.inject_fix(
                 directive=instruction,
                 level=EnforcementLevel.SUGGEST,
@@ -43,6 +44,5 @@ class SwitchStrategyFix(BaseFix):
 
     def get_instruction(self, context=None) -> str:
         return (
-            "Consider switching to a different strategy. "
-            "Your current approach may not be optimal."
+            "Consider switching to a different strategy. Your current approach may not be optimal."
         )

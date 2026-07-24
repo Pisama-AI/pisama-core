@@ -27,6 +27,7 @@ class EscalateFix(BaseFix):
 
         if context.adapter:
             from pisama_core.injection.enforcement import EnforcementLevel
+
             context.adapter.inject_fix(
                 directive=instruction,
                 level=EnforcementLevel.DIRECT,
@@ -40,7 +41,4 @@ class EscalateFix(BaseFix):
         )
 
     def get_instruction(self, context=None) -> str:
-        return (
-            "This situation requires user input. "
-            "Ask the user for guidance on how to proceed."
-        )
+        return "This situation requires user input. Ask the user for guidance on how to proceed."

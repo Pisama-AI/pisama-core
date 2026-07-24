@@ -2,8 +2,8 @@
 
 from pisama_core.detection.base import BaseDetector
 from pisama_core.detection.result import DetectionResult, FixType
-from pisama_core.traces.models import Trace
 from pisama_core.traces.enums import SpanKind, SpanStatus
+from pisama_core.traces.models import Trace
 
 
 class HallucinationDetector(BaseDetector):
@@ -38,13 +38,17 @@ class HallucinationDetector(BaseDetector):
         for span in tool_spans:
             if span.status == SpanStatus.ERROR:
                 if span.name in ["Read", "Glob", "Grep"]:
-                    if span.error_message and ("not found" in span.error_message.lower() or
-                                               "no such file" in span.error_message.lower()):
+                    if span.error_message and (
+                        "not found" in span.error_message.lower()
+                        or "no such file" in span.error_message.lower()
+                    ):
                         failed_file_ops.append(span)
 
         if len(failed_file_ops) >= 3:
             severity += 40
-            issues.append(f"Multiple file operations failed ({len(failed_file_ops)}) - possible fabricated paths")
+            issues.append(
+                f"Multiple file operations failed ({len(failed_file_ops)}) - possible fabricated paths"
+            )
 
         # Check for repeated failures with same pattern
         error_spans = [s for s in tool_spans if s.status.is_failure]
@@ -52,7 +56,9 @@ class HallucinationDetector(BaseDetector):
             error_ratio = len(error_spans) / len(tool_spans)
             if error_ratio > 0.3:
                 severity += 30
-                issues.append(f"High error rate ({error_ratio:.0%}) - may indicate fabricated information")
+                issues.append(
+                    f"High error rate ({error_ratio:.0%}) - may indicate fabricated information"
+                )
 
         if not issues:
             return DetectionResult.no_issue(self.name)

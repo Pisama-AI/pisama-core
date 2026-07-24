@@ -1,6 +1,6 @@
-"""Fix injection protocol for PISAMA."""
+"""Fix injection protocol for Pisama."""
 
+from pisama_core.injection.enforcement import EnforcementEngine, EnforcementLevel
 from pisama_core.injection.protocol import FixInjectionProtocol
-from pisama_core.injection.enforcement import EnforcementLevel, EnforcementEngine
 
 __all__ = ["FixInjectionProtocol", "EnforcementLevel", "EnforcementEngine"]

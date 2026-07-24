@@ -1,4 +1,4 @@
-"""PISAMA Tokenization Module - PII Protection for Traces.
+"""Pisama Tokenization Module - PII Protection for Traces.
 
 This module provides PII tokenization for agent traces:
 - PII detection with configurable patterns
@@ -33,46 +33,46 @@ Example:
 
 # Detection
 from pisama_core.tokenization.detector import (
+    DEFAULT_EXCLUSIONS,
+    DEFAULT_PATTERNS,
     PIIDetector,
     PIIMatch,
     PIIPattern,
     PIIType,
-    DEFAULT_PATTERNS,
-    DEFAULT_EXCLUSIONS,
 )
 
 # Token generation
 from pisama_core.tokenization.generator import (
     TokenGenerator,
-    TokenParser,
     TokenInfo,
-)
-
-# Vault storage
-from pisama_core.tokenization.vault import (
-    TokenVault,
-    TokenRecord,
-    EncryptedValue,
-    derive_key_from_password,
+    TokenParser,
 )
 
 # Keychain
 from pisama_core.tokenization.keychain import (
+    FileBackend,
+    KeychainError,
     KeychainManager,
     KeychainResult,
-    KeychainError,
     KeychainUnavailableError,
-    MacOSKeychain,
     LinuxSecretService,
-    FileBackend,
+    MacOSKeychain,
 )
 
 # Unified tokenizer
 from pisama_core.tokenization.tokenizer import (
-    Tokenizer,
     TokenizationResult,
     TokenizationStats,
+    Tokenizer,
     tokenize_trace_data,
+)
+
+# Vault storage
+from pisama_core.tokenization.vault import (
+    EncryptedValue,
+    TokenRecord,
+    TokenVault,
+    derive_key_from_password,
 )
 
 __all__ = [

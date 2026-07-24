@@ -1,9 +1,11 @@
 """Cost detector for monitoring resource usage."""
 
+from typing import ClassVar
+
 from pisama_core.detection.base import BaseDetector
 from pisama_core.detection.result import DetectionResult, FixType
-from pisama_core.traces.models import Trace
 from pisama_core.traces.enums import Platform, SpanKind
+from pisama_core.traces.models import Span, Trace
 
 
 class CostDetector(BaseDetector):
@@ -29,7 +31,7 @@ class CostDetector(BaseDetector):
     max_duration_minutes = 30
 
     # OpenClaw-specific: 24/7 agents use per-hour budgets instead of session limits
-    PLATFORM_OVERRIDES = {
+    PLATFORM_OVERRIDES: ClassVar[dict[Platform, dict[str, int | None]]] = {
         Platform.OPENCLAW: {
             "max_llm_calls": 500,
             "max_tool_calls": 1000,
@@ -42,7 +44,7 @@ class CostDetector(BaseDetector):
         },
     }
 
-    def _get_limit(self, trace: Trace, key: str):
+    def _get_limit(self, trace: Trace, key: str) -> int | None:
         """Get platform-aware limit value."""
         if hasattr(trace, "platform") and trace.platform in self.PLATFORM_OVERRIDES:
             overrides = self.PLATFORM_OVERRIDES[trace.platform]
@@ -63,12 +65,12 @@ class CostDetector(BaseDetector):
         severity = 0
 
         # Check LLM call count
-        if len(llm_spans) > max_llm:
+        if max_llm is not None and len(llm_spans) > max_llm:
             severity += 30
             issues.append(f"Excessive LLM calls ({len(llm_spans)})")
 
         # Check tool call count
-        if len(tool_spans) > max_tool:
+        if max_tool is not None and len(tool_spans) > max_tool:
             severity += 25
             issues.append(f"Excessive tool calls ({len(tool_spans)})")
 
@@ -117,7 +119,3 @@ class CostDetector(BaseDetector):
             )
 
         return DetectionResult.no_issue(self.name)
-
-
-# Needed for detect_realtime
-from pisama_core.traces.models import Span  # noqa: E402

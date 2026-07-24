@@ -1,12 +1,11 @@
 """Tests for pisama_core.config module."""
 
-import pytest
 import json
 import tempfile
 from pathlib import Path
 
-from pisama_core.config.models import PisamaConfig, DetectionConfig, HealingConfig
 from pisama_core.config.loader import load_config
+from pisama_core.config.models import DetectionConfig, HealingConfig, PisamaConfig
 
 
 class TestDetectionConfig:
