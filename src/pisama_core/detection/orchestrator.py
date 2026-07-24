@@ -145,7 +145,10 @@ class DetectionOrchestrator:
             block_threshold: Severity at which to recommend blocking
             parallel: Whether to run detectors in parallel
         """
-        self.registry = registry or global_registry
+        # DetectorRegistry implements __len__, so an intentionally empty
+        # registry is falsy. Treat only None as "use the global registry";
+        # otherwise callers cannot reliably isolate an orchestrator.
+        self.registry = registry if registry is not None else global_registry
         self.severity_threshold = severity_threshold
         self.block_threshold = block_threshold
         self.parallel = parallel
@@ -183,14 +186,22 @@ class DetectionOrchestrator:
                 result = await detector.run(trace)
                 detection_results.append(result)
 
+        # Keep successful no-issue results for detector accounting, but do not
+        # report detected issues below the configured threshold.
+        reported_results = [
+            result
+            for result in detection_results
+            if not result.detected or result.severity >= self.severity_threshold
+        ]
+
         # Aggregate
         return AnalysisResult(
             trace_id=trace.trace_id,
             platform=platform,
-            detection_results=detection_results,
+            detection_results=reported_results,
             total_detectors_run=len(detectors),
-            issues_detected=sum(1 for r in detection_results if r.detected),
-            max_severity=max((r.severity for r in detection_results), default=0),
+            issues_detected=sum(1 for r in reported_results if r.detected),
+            max_severity=max((r.severity for r in reported_results), default=0),
             total_execution_time_ms=sum(r.execution_time_ms for r in detection_results),
         )
 

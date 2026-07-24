@@ -31,7 +31,7 @@ jobs:
         run: mypy src/pisama_core/
 
       - name: Coverage regression gate
-        run: pytest -q --cov=pisama_core --cov-report=term --cov-fail-under=50
+        run: pytest -q --cov=pisama_core --cov-report=term --cov-fail-under=60
 
   test:
     runs-on: ubuntu-latest

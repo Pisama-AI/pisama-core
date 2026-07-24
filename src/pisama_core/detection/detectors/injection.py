@@ -387,6 +387,11 @@ class InjectionDetector(BaseDetector):
             if isinstance(text_attr, str) and len(text_attr) > 10:
                 texts_to_check.append((text_attr, span.span_id))
 
+        # A user-input span commonly stores the same content in attributes and
+        # output_data. Preserve input order while preventing duplicate issues,
+        # evidence, and inflated confidence for one physical input.
+        texts_to_check = list(dict.fromkeys(texts_to_check))
+
         if not texts_to_check:
             return DetectionResult.no_issue(self.name)
 

@@ -31,6 +31,7 @@ from pisama_core.tokenization.detector import PIIDetector, PIIMatch, PIIPattern
 from pisama_core.tokenization.generator import TokenGenerator, TokenParser
 from pisama_core.tokenization.keychain import KeychainManager
 from pisama_core.tokenization.vault import TokenVault
+from pisama_core.utils._secure_files import owner_only_text_file
 
 
 @dataclass
@@ -198,6 +199,9 @@ class Tokenizer:
 
             # Get vault and key
             vault, key = self._ensure_vault()
+            if vault is None or key is None:
+                self._stats.errors += 1
+                return text
 
             # Replace PII with tokens (process in reverse order to preserve positions)
             result = text
@@ -268,6 +272,8 @@ class Tokenizer:
         if isinstance(value, str):
             # Check if this field should be tokenized
             if fields_to_tokenize is None or current_field in fields_to_tokenize:
+                if self._detector.is_sensitive_field(current_field):
+                    return self._tokenize_sensitive_value(value)
                 return self.tokenize_string(value)
             return value
 
@@ -279,6 +285,31 @@ class Tokenizer:
 
         else:
             return value
+
+    def _tokenize_sensitive_value(self, value: str) -> str:
+        """Tokenize an entire value from a field explicitly marked sensitive."""
+        if not value or self._parser.is_valid_token(value):
+            return value
+
+        vault, key = self._ensure_vault()
+        if vault is None or key is None:
+            self._stats.errors += 1
+            return value
+
+        token = self._generator.generate("SENSITIVE_FIELD", value)
+        vault.store(
+            "SENSITIVE_FIELD",
+            token,
+            value,
+            self.session_id,
+            key,
+        )
+        self._stats.total_tokenized += 1
+        self._stats.fields_tokenized += 1
+        self._stats.tokens_by_type["SENSITIVE_FIELD"] = (
+            self._stats.tokens_by_type.get("SENSITIVE_FIELD", 0) + 1
+        )
+        return token
 
     def detokenize_string(
         self,
@@ -300,6 +331,11 @@ class Tokenizer:
         Returns:
             Text with tokens replaced by original values.
         """
+        if not reason.strip():
+            raise ValueError("reason must be non-empty for detokenization")
+        if not principal.strip():
+            raise ValueError("principal must be non-empty for detokenization")
+
         vault, key = self._ensure_vault()
 
         if vault is None or key is None:
@@ -391,12 +427,9 @@ class Tokenizer:
             "ticket": ticket,
         }
 
-        try:
-            audit_log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(audit_log_path, "a") as f:
-                f.write(json.dumps(entry) + "\n")
-        except Exception:
-            pass  # Don't fail on audit log errors
+        audit_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with owner_only_text_file(audit_log_path, append=True) as audit:
+            audit.write(json.dumps(entry) + "\n")
 
     def contains_pii(self, text: str) -> bool:
         """Quick check if text contains any PII.
@@ -433,6 +466,7 @@ class Tokenizer:
         if self._vault:
             self._vault.close()
             self._vault = None
+        self._encryption_key = None
 
 
 # Convenience function for one-off tokenization
