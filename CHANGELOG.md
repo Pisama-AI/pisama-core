@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct standalone repository metadata and ship the `py.typed` marker.
 - Add CodeQL, dependency review, Dependabot, and a coverage regression gate.
 - Restore PyPI publication attestations and pin release workflow actions.
+- Make enum-backed PII tokens reversible, require exact token parsing, and
+  tokenize sensitive dictionary fields as documented.
+- Create vault, keychain, detokenization-audit, and general audit files with
+  owner-only permissions from their first write.
+- Fail open without creating irreversible tokens when secure storage is
+  unavailable, and fail closed when a PII reveal cannot be audited.
+- Preserve explicit empty detector registries and apply configured reporting
+  thresholds during orchestration.
+- Add real captured Omnigent event fixtures and security-focused contracts for
+  ingestion, prompt-injection detection, encrypted tokenization, audit logging,
+  enforcement, and configuration.
+- Raise the full-package coverage regression floor from 50% to 60%.
 
 ## [1.8.1] - 2026-07-23
 

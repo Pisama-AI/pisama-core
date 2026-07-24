@@ -128,8 +128,13 @@ class TokenGenerator:
         Returns:
             The token string in format [{TYPE}:{SESSION_PREFIX}:{RANDOM}]
         """
+        # PIIType subclasses str, but Enum.__str__ renders it as
+        # "PIIType.EMAIL". Normalize enum-like values to their wire value so
+        # generated tokens remain parseable and detokenizable.
+        normalized_type = str(getattr(pii_type, "value", pii_type))
+
         # Check cache first (unless forcing new)
-        value_hash = self._compute_value_hash(pii_type, original_value)
+        value_hash = self._compute_value_hash(normalized_type, original_value)
 
         if not force_new and value_hash in self._value_to_token:
             return self._value_to_token[value_hash]
@@ -137,14 +142,14 @@ class TokenGenerator:
         # Generate new token with collision detection
         for attempt in range(self._collision_retries):
             random_suffix = self._generate_random_suffix()
-            token = f"[{pii_type}:{self._session_prefix}:{random_suffix}]"
+            token = f"[{normalized_type}:{self._session_prefix}:{random_suffix}]"
 
             # Check for collision (same token already exists for different value)
             if token not in self._token_cache:
                 # Store in caches
                 token_info: TokenInfo = {
                     "token": token,
-                    "pii_type": pii_type,
+                    "pii_type": normalized_type,
                     "original_value": original_value,
                     "session_id": self.session_id,
                     "created_at": datetime.now(timezone.utc).isoformat(),
@@ -223,7 +228,7 @@ class TokenParser:
         Returns:
             Dictionary with pii_type, session_prefix, random, or None if invalid.
         """
-        match = self._pattern.match(token)
+        match = self._pattern.fullmatch(token)
         if not match:
             return None
 
@@ -242,7 +247,7 @@ class TokenParser:
         Returns:
             True if valid token format.
         """
-        return self._pattern.match(token) is not None
+        return self._pattern.fullmatch(token) is not None
 
     def extract_tokens(self, text: str) -> list[str]:
         """Extract all tokens from a text string.
@@ -253,7 +258,7 @@ class TokenParser:
         Returns:
             List of token strings found.
         """
-        return self._pattern.findall(text)
+        return [match.group(0) for match in self._pattern.finditer(text)]
 
     def get_session_prefix(self, token: str) -> str | None:
         """Extract the session prefix from a token.

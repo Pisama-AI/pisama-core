@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
+from pisama_core.utils._secure_files import ensure_owner_only_file
+
 # Use cryptography library for AES-256-GCM
 # This is a soft dependency - vault degrades gracefully without it
 try:
@@ -111,6 +113,10 @@ class TokenVault:
         """Get or create database connection."""
         if self._conn is None:
             self._ensure_dir()
+            # Create the vault with owner-only permissions before SQLite opens
+            # it. A later chmod leaves a race window where encrypted records and
+            # identifying metadata can be read by another local user.
+            ensure_owner_only_file(self.db_path)
             self._conn = sqlite3.connect(
                 str(self.db_path),
                 check_same_thread=False,

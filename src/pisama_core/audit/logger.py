@@ -7,6 +7,7 @@ from typing import Any, Optional
 from pisama_core.audit.models import AuditEvent, AuditEventType
 from pisama_core.detection.result import DetectionResult
 from pisama_core.healing.models import FixResult
+from pisama_core.utils._secure_files import owner_only_text_file
 
 
 class AuditLogger:
@@ -36,8 +37,8 @@ class AuditLogger:
 
     def _write_event(self, event: AuditEvent) -> None:
         """Write an event to the log file."""
-        with open(self.log_file, "a") as f:
-            f.write(event.to_json() + "\n")
+        with owner_only_text_file(self.log_file, append=True) as log:
+            log.write(event.to_json() + "\n")
 
     def log(
         self,
@@ -211,7 +212,7 @@ class AuditLogger:
 
                     if len(events) >= limit:
                         break
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                     continue
 
         return events

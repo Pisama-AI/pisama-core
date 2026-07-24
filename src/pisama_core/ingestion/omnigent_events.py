@@ -186,6 +186,9 @@ def events_to_atif(
             item_type = item.get("type")
             if item_type == "message" and item.get("role") == "assistant":
                 current.message = _content_text(item.get("content")) or current.message
+                item_model = item.get("model")
+                if isinstance(item_model, str) and item_model:
+                    current.model_name = item_model
             elif item_type == "function_call":
                 call_id = str(item.get("call_id") or item.get("id") or "")
                 name = str(item.get("name") or "unknown")

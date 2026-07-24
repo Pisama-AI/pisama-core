@@ -24,6 +24,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from pisama_core.utils._secure_files import owner_only_text_file
+
 # Service name for keychain storage
 KEYCHAIN_SERVICE = "pisama-vault"
 KEYCHAIN_ACCOUNT = "encryption-key"
@@ -366,12 +368,12 @@ class FileBackend(KeychainBackend):
             # Ensure directory exists
             self.key_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Write key encoded as base64
+            # Create and write the key with owner-only permissions from the
+            # first byte. write_text() followed by chmod() leaves a disclosure
+            # window on permissive umasks.
             encoded = base64.b64encode(key).decode("ascii")
-            self.key_path.write_text(encoded)
-
-            # Restrict permissions (owner read/write only)
-            os.chmod(self.key_path, 0o600)
+            with owner_only_text_file(self.key_path, append=False) as key_file:
+                key_file.write(encoded)
 
             return KeychainResult(
                 success=True,
@@ -393,7 +395,8 @@ class FileBackend(KeychainBackend):
                 return None
 
             encoded = self.key_path.read_text().strip()
-            return base64.b64decode(encoded)
+            key = base64.b64decode(encoded, validate=True)
+            return key if len(key) == 32 else None
 
         except Exception:
             return None
@@ -509,7 +512,8 @@ class KeychainManager:
         Returns:
             32-byte key or None if not found.
         """
-        return self._get_backend().get_key()
+        key = self._get_backend().get_key()
+        return key if key is None or len(key) == 32 else None
 
     def delete_key(self) -> KeychainResult:
         """Delete the encryption key.

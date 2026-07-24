@@ -25,6 +25,8 @@ def load_config(path: Optional[Path] = None) -> PisamaConfig:
     try:
         with open(path) as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return PisamaConfig()
         return PisamaConfig.from_dict(data)
     except (json.JSONDecodeError, KeyError):
         return PisamaConfig()

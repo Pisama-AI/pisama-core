@@ -166,13 +166,17 @@ class PIIDetector:
             sensitive_fields: Field names that should always have values tokenized.
         """
         self._patterns: dict[str, PIIPattern] = {}
-        self._exclusions: set[str] = set(exclusions or DEFAULT_EXCLUSIONS)
-        self._sensitive_fields: set[str] = set(
-            sensitive_fields or ["password", "secret", "api_key", "token", "credential", "ssn"]
+        configured_exclusions = DEFAULT_EXCLUSIONS if exclusions is None else exclusions
+        configured_sensitive_fields = (
+            ["password", "secret", "api_key", "token", "credential", "ssn"]
+            if sensitive_fields is None
+            else sensitive_fields
         )
+        self._exclusions: set[str] = set(configured_exclusions)
+        self._sensitive_fields: set[str] = set(configured_sensitive_fields)
 
         # Load default or custom patterns
-        for pattern in patterns or DEFAULT_PATTERNS:
+        for pattern in DEFAULT_PATTERNS if patterns is None else patterns:
             self._patterns[pattern.name] = pattern
 
     @property
