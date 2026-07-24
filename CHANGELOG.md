@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.8.1] - 2026-07-23
+## [1.8.2] - 2026-07-23
 
 ### Added
 
@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve explicit empty detector registries and apply configured reporting
   thresholds during orchestration.
+
+## [1.8.1] - 2026-07-23
+
+### Fixed
+
 - Parse the standard ISO 8601 `Z` UTC suffix consistently on Python 3.10
   through 3.13.
 
