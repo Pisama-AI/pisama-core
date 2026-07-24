@@ -56,9 +56,9 @@ dev = [
 [project.urls]
 Homepage = "https://pisama.ai"
 Documentation = "https://docs.pisama.ai"
-Repository = "https://github.com/Pisama-AI/pisama"
-Issues = "https://github.com/Pisama-AI/pisama/issues"
-Changelog = "https://github.com/Pisama-AI/pisama/blob/main/packages/pisama-core/CHANGELOG.md"
+Repository = "https://github.com/Pisama-AI/pisama-core"
+Issues = "https://github.com/Pisama-AI/pisama-core/issues"
+Changelog = "https://github.com/Pisama-AI/pisama-core/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pisama_core"]
