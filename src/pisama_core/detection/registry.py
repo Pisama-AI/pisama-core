@@ -80,8 +80,7 @@ class DetectorRegistry:
             List of applicable detectors
         """
         return [
-            d for d in self._detectors.values()
-            if d.enabled and d.applies_to_platform(platform)
+            d for d in self._detectors.values() if d.enabled and d.applies_to_platform(platform)
         ]
 
     def get_realtime_capable(self, platform: Platform) -> list[BaseDetector]:
@@ -93,10 +92,7 @@ class DetectorRegistry:
         Returns:
             List of real-time capable detectors
         """
-        return [
-            d for d in self.get_for_platform(platform)
-            if d.realtime_capable
-        ]
+        return [d for d in self.get_for_platform(platform) if d.realtime_capable]
 
     def enable(self, name: str) -> bool:
         """Enable a detector by name.

@@ -24,7 +24,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-
 # Service name for keychain storage
 KEYCHAIN_SERVICE = "pisama-vault"
 KEYCHAIN_ACCOUNT = "encryption-key"
@@ -118,7 +117,7 @@ class MacOSKeychain(KeychainBackend):
             )
 
             # Add new key
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "security",
                     "add-generic-password",
@@ -278,9 +277,7 @@ class LinuxSecretService(KeychainBackend):
             collection, connection = self._get_collection()
 
             items = list(
-                collection.search_items(
-                    {"service": KEYCHAIN_SERVICE, "account": KEYCHAIN_ACCOUNT}
-                )
+                collection.search_items({"service": KEYCHAIN_SERVICE, "account": KEYCHAIN_ACCOUNT})
             )
 
             if not items:
@@ -329,10 +326,16 @@ class LinuxSecretService(KeychainBackend):
 
 
 class FileBackend(KeychainBackend):
-    """Fallback file-based storage (with warnings).
+    """Fallback file-based storage — DEVELOPMENT ONLY.
 
-    NOT RECOMMENDED for production - keys are stored in a file
-    with restricted permissions but no encryption.
+    Stores the master key as plain Base64 with 0o600 perms. Anyone who
+    can read the file (root, a compromised process running as the same
+    user, a leaked dev backup) can decrypt the entire vault.
+
+    This backend is ONLY suitable for local development without an OS
+    keyring. Production deployments must use OSXKeychain, SecretService,
+    or an explicit cloud KMS — never this fallback. Set
+    ``PISAMA_ALLOW_INSECURE_FILE_KEYCHAIN=1`` to acknowledge the risk.
     """
 
     name = "file-fallback"
@@ -347,6 +350,18 @@ class FileBackend(KeychainBackend):
 
     def store_key(self, key: bytes) -> KeychainResult:
         """Store key in file with restricted permissions."""
+        if os.environ.get("PISAMA_ALLOW_INSECURE_FILE_KEYCHAIN") != "1":
+            return KeychainResult(
+                success=False,
+                message=(
+                    "Refusing to store master key in plaintext file — set "
+                    "PISAMA_ALLOW_INSECURE_FILE_KEYCHAIN=1 to acknowledge "
+                    "that this is dev-only and the vault is unencrypted "
+                    "at rest. Production deployments must use a real "
+                    "keyring backend (OSXKeychain, SecretService, KMS)."
+                ),
+                backend=self.name,
+            )
         try:
             # Ensure directory exists
             self.key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -360,7 +375,7 @@ class FileBackend(KeychainBackend):
 
             return KeychainResult(
                 success=True,
-                message=f"Key stored in file (WARNING: less secure than keychain): {self.key_path}",
+                message=f"Key stored in file (INSECURE FALLBACK, dev-only): {self.key_path}",
                 backend=self.name,
             )
 

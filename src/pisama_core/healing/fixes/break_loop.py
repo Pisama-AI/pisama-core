@@ -28,6 +28,7 @@ class BreakLoopFix(BaseFix):
         # If adapter available, inject the instruction
         if context.adapter:
             from pisama_core.injection.enforcement import EnforcementLevel
+
             context.adapter.inject_fix(
                 directive=instruction,
                 level=EnforcementLevel.DIRECT,

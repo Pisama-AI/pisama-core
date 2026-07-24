@@ -7,6 +7,7 @@ class Platform(str, Enum):
     """Supported agent platforms."""
 
     CLAUDE_CODE = "claude_code"
+    LANGCHAIN = "langchain"
     LANGGRAPH = "langgraph"
     AUTOGEN = "autogen"
     CREWAI = "crewai"
@@ -15,6 +16,12 @@ class Platform(str, Enum):
     DIFY = "dify"
     MOLTBOT = "moltbot"
     AUTORESEARCH = "autoresearch"
+    MANAGED_AGENTS = "managed_agents"
+    OPENAI = "openai"
+    CODEX = "codex"
+    BEDROCK = "bedrock"
+    GEMINI = "gemini"
+    GOOGLE_ADK = "google_adk"
     GENERIC = "generic"
 
     def __str__(self) -> str:

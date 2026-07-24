@@ -1,10 +1,9 @@
 """Tests for pisama_core.traces module."""
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
-from pisama_core.traces.models import Event, Span, Trace, TraceMetadata
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
+from pisama_core.traces.models import Event, Span, Trace, TraceMetadata
 
 
 class TestEvent:
@@ -91,7 +90,7 @@ class TestSpan:
     def test_span_add_event(self):
         """Test adding events to span."""
         span = Span(name="test")
-        event = span.add_event("checkpoint", {"status": "ok"})
+        span.add_event("checkpoint", {"status": "ok"})
         assert len(span.events) == 1
         assert span.events[0].name == "checkpoint"
 
@@ -216,9 +215,7 @@ class TestTrace:
         """Test trace deserialization."""
         data = {
             "trace_id": "test-trace",
-            "spans": [
-                {"span_id": "s1", "name": "Read", "start_time": "2025-01-01T12:00:00+00:00"}
-            ],
+            "spans": [{"span_id": "s1", "name": "Read", "start_time": "2025-01-01T12:00:00+00:00"}],
             "metadata": {
                 "session_id": "sess-1",
                 "platform": "claude_code",

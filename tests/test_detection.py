@@ -1,18 +1,17 @@
 """Tests for pisama_core.detection module."""
 
 import pytest
-from datetime import datetime, timezone
 
+from pisama_core.detection.base import BaseDetector
+from pisama_core.detection.registry import DetectorRegistry
 from pisama_core.detection.result import (
     DetectionResult,
     Evidence,
     FixRecommendation,
     FixType,
 )
-from pisama_core.detection.base import BaseDetector
-from pisama_core.detection.registry import DetectorRegistry
-from pisama_core.traces.models import Trace, Span
 from pisama_core.traces.enums import Platform, SpanKind
+from pisama_core.traces.models import Trace
 
 
 class TestEvidence:
@@ -121,7 +120,7 @@ class TestDetectionResult:
     def test_result_add_evidence(self):
         """Test adding evidence to result."""
         result = DetectionResult(detector_name="test")
-        evidence = result.add_evidence(
+        result.add_evidence(
             description="Found repeating pattern",
             span_ids=["s1", "s2", "s3"],
             data={"pattern_length": 3},
@@ -272,3 +271,414 @@ class TestDetectorRegistry:
 
         all_detectors = registry.get_all()
         assert len(all_detectors) == 1
+
+
+# --- Task starvation detector regression tests --------------------------------
+# These guard the 2026-04-17 precision fix that raised F1 from 0.667 to 0.901
+# by (a) including TASK-kind spans in the executed set, (b) excluding the
+# planning span itself from executed work, and (c) gating on
+# executed_count < planned_count to suppress paraphrase-driven false positives.
+
+from pisama_core.detection.detectors.starvation import TaskStarvationDetector
+
+
+def _build_starvation_trace(planned: list[str], executed: list[str]) -> Trace:
+    trace = Trace()
+    plan_text = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(planned))
+    trace.create_span(
+        name="planner",
+        kind=SpanKind.AGENT,
+        output_data={"output": plan_text},
+    )
+    for task_name in executed:
+        trace.create_span(
+            name=task_name,
+            kind=SpanKind.TASK,
+            output_data={"output": f"Completed: {task_name}"},
+        )
+    return trace
+
+
+class TestTaskStarvationDetector:
+    """Regression tests for TaskStarvationDetector precision fix."""
+
+    @pytest.mark.asyncio
+    async def test_all_planned_executed_no_starvation(self):
+        """All planned tasks executed — must not fire (was TN=0 bug)."""
+        trace = _build_starvation_trace(
+            planned=["fetch_data", "transform", "load", "validate"],
+            executed=["fetch_data", "transform", "load", "validate"],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_identifier_tasks_all_executed(self):
+        """Identifier-style task names (task_0, task_1) must match via substring."""
+        trace = _build_starvation_trace(
+            planned=[f"task_{i}" for i in range(5)],
+            executed=[f"task_{i}" for i in range(5)],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_identifier_tasks_partially_starved(self):
+        """Identifier-style starvation: planned 5, executed 2 — must fire."""
+        trace = _build_starvation_trace(
+            planned=[f"task_{i}" for i in range(5)],
+            executed=["task_0", "task_1"],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert result.detected
+
+    @pytest.mark.asyncio
+    async def test_paraphrased_executions_suppressed(self):
+        """Paraphrased executions (same count) are NOT starvation."""
+        trace = _build_starvation_trace(
+            planned=["fetch_weather", "calculate_route", "estimate_time", "send_notification"],
+            executed=["get_weather_data", "route_calculation", "time_estimation", "notify_user"],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_real_starvation_partial_execution(self):
+        """Planned 7 tasks, executed 2 — clear starvation, must fire."""
+        trace = _build_starvation_trace(
+            planned=[f"step_{i}" for i in range(7)],
+            executed=["step_0", "step_1"],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert result.detected
+        # Ratio should be high
+        assert result.evidence[0].data["starvation_ratio"] >= 0.5
+
+    @pytest.mark.asyncio
+    async def test_planning_span_not_treated_as_executed(self):
+        """The span we parsed plans from must not itself count as executed work."""
+        # If the planner span were included in executed, it would spuriously
+        # match every planned task (its output contains all of them), making
+        # it impossible to detect starvation at all.
+        trace = _build_starvation_trace(
+            planned=[f"task_{i}" for i in range(4)],
+            executed=[],
+        )
+        result = await TaskStarvationDetector().detect(trace)
+        assert result.detected
+
+
+# ----------------------------------------------------------------------------
+# Citation detector regression tests (numeric-fact fabrication check)
+# ----------------------------------------------------------------------------
+
+from pisama_core.detection.detectors.citation import CitationDetector
+
+
+def _build_citation_trace(output: str, sources: list[str]) -> Trace:
+    trace = Trace()
+    source_names = ["the report", "the data", "the record", "the study", "the document"]
+    for i, src in enumerate(sources):
+        trace.create_span(
+            name=source_names[i % len(source_names)],
+            kind=SpanKind.RETRIEVAL,
+            output_data={"content": src},
+        )
+    trace.create_span(
+        name="agent_output",
+        kind=SpanKind.AGENT,
+        output_data={"output": output},
+    )
+    return trace
+
+
+class TestCitationDetectorNumericFacts:
+    """Regression tests for citation detector numeric-fact fabrication check."""
+
+    @pytest.mark.asyncio
+    async def test_fabricated_percentage_detected(self):
+        """Claim with mostly-accurate text but fabricated percentage fires."""
+        # Accurate: 15 vulnerabilities, 3 critical. Fabricated: 48 hours (src says 24)
+        trace = _build_citation_trace(
+            output=(
+                "Per the security assessment, 15 vulnerabilities were identified "
+                "including 3 high-priority threats, with critical patches deployed "
+                "within 48 hours across all systems"
+            ),
+            sources=[
+                "Network security scan detected 15 vulnerabilities, with 3 "
+                "classified as critical severity, patched within 24 hours"
+            ],
+        )
+        result = await CitationDetector().detect(trace)
+        assert result.detected
+
+    @pytest.mark.asyncio
+    async def test_fabricated_count_detected(self):
+        """Claim with fabricated integer count not in source fires."""
+        # Accurate word overlap but "2300000 dollars" not in source
+        trace = _build_citation_trace(
+            output=(
+                "According to the audit findings, major fraud was discovered "
+                "in the accounts receivable department totaling 2300000 "
+                "dollars in missing funds across multiple quarters"
+            ),
+            sources=[
+                "The financial audit of the accounts receivable department "
+                "revealed major fraud and missing funds across quarters"
+            ],
+        )
+        result = await CitationDetector().detect(trace)
+        assert result.detected
+
+    @pytest.mark.asyncio
+    async def test_accurate_high_overlap_not_flagged(self):
+        """Accurate citation with full word+number overlap must not fire."""
+        trace = _build_citation_trace(
+            output=(
+                "According to the study, the clinical trial enrolled 500 "
+                "participants and achieved 85% improvement in symptoms over "
+                "12 weeks of treatment"
+            ),
+            sources=[
+                "The clinical trial enrolled 500 participants and achieved 85% "
+                "improvement in symptoms over 12 weeks of treatment"
+            ],
+        )
+        result = await CitationDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_approximation_suppresses_numeric_check(self):
+        """Approximation markers must suppress numeric strict-match."""
+        # Claim has "approximately 48 dollars" which is not exact match to "47"
+        # but the approximation marker should prevent numeric-fact firing.
+        # Word overlap is high enough that the original overlap check passes.
+        trace = _build_citation_trace(
+            output=(
+                "According to market data, shares ended trading at "
+                "approximately 48 dollars declining roughly 3 percent "
+                "from yesterday closing price in heavy volume"
+            ),
+            sources=[
+                "The stock price closed at 48 dollars per share, declining 3 "
+                "percent from yesterday in heavy volume during trading"
+            ],
+        )
+        result = await CitationDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_same_number_different_unit_not_flagged(self):
+        """Same number with synonymous unit (participants/attendees) must not fire."""
+        trace = _build_citation_trace(
+            output=(
+                "According to event statistics, the conference hosted 850 "
+                "participants representing 34 nations with 120 presentation "
+                "sessions delivered"
+            ),
+            sources=[
+                "The conference attracted 850 attendees from 34 countries "
+                "with 120 presentation sessions"
+            ],
+        )
+        result = await CitationDetector().detect(trace)
+        assert not result.detected
+
+
+# ----------------------------------------------------------------------------
+# Entity-confusion detector regression tests (negative-gate check)
+# ----------------------------------------------------------------------------
+
+from pisama_core.detection.detectors.entity_confusion import EntityConfusionDetector
+
+
+def _build_entity_confusion_trace(context: str, output: str) -> Trace:
+    trace = Trace()
+    trace.create_span(
+        name="analyze",
+        kind=SpanKind.LLM,
+        input_data={"content": context, "prompt": context},
+        output_data={"output": output, "response": output},
+    )
+    return trace
+
+
+class TestEntityConfusionDetectorNegativeGate:
+    """Regression tests for the sentence-scope negative gate added to
+    entity_confusion. Before the gate, any two entities sharing a short
+    paragraph caused false positives because proximity was measured across
+    the whole output."""
+
+    @pytest.mark.asyncio
+    async def test_correct_role_mapping_not_flagged(self):
+        """Correct role/salary mapping in two-sentence output must not fire."""
+        trace = _build_entity_confusion_trace(
+            context=(
+                "Alice Chen is the CEO earning $250K. Bob Smith is the engineer earning $120K."
+            ),
+            output=(
+                "Alice Chen, the CEO, earns $250K per year. "
+                "Bob Smith serves as engineer with a salary of $120K."
+            ),
+        )
+        result = await EntityConfusionDetector().detect(trace)
+        assert not result.detected
+
+    @pytest.mark.asyncio
+    async def test_actual_role_swap_still_detected(self):
+        """A real role swap between two entities must still fire."""
+        trace = _build_entity_confusion_trace(
+            context=(
+                "Alice Chen is the CEO earning $250K. "
+                "Bob Smith is the engineer earning $120K. "
+                "Alice Chen presented the quarterly results."
+            ),
+            output=(
+                "Bob Smith is the CEO and presented the quarterly results "
+                "with a salary of $250K. Alice Chen works as the engineer "
+                "earning $120K."
+            ),
+        )
+        result = await EntityConfusionDetector().detect(trace)
+        assert result.detected
+
+    @pytest.mark.asyncio
+    async def test_role_prefixed_name_abbreviated_in_output_not_flagged(self):
+        """When context uses role-prefixed names (e.g. 'Chef Antonio Rossi')
+        and the output uses the bare name, the entity must be considered
+        present and no entity-merge must fire."""
+        trace = _build_entity_confusion_trace(
+            context=(
+                "Chef Antonio Rossi runs the kitchen at Fine Dining earning "
+                "$120K. Waiter Jessica Park serves tables earning $45K."
+            ),
+            output=(
+                "Antonio Rossi manages kitchen operations at Fine Dining "
+                "restaurant earning $120K. Jessica Park provides table "
+                "service to customers with a $45K income."
+            ),
+        )
+        result = await EntityConfusionDetector().detect(trace)
+        assert not result.detected
+
+
+class TestApprovalBypassDetector:
+    """Regression tests for ApprovalBypassDetector (Sprint 7 GG-2 recall fix).
+
+    Before the fix, any user message in the preceding spans counted as
+    approval ("user in the loop"), which masked the detector from firing
+    on genuine governance violations where the user merely asked an
+    exploratory question or stated a problem before the agent took a
+    destructive action.
+    """
+
+    def _build(self, preceding_context, tool_name, tool_input=""):
+        trace = Trace()
+        for ctx in preceding_context:
+            role = ctx.get("role", "agent")
+            kind = SpanKind.USER_INPUT if role == "user" else SpanKind.AGENT
+            trace.create_span(
+                name=f"{role}_message",
+                kind=kind,
+                output_data={"content": ctx.get("content", "")},
+            )
+        trace.create_span(
+            name=tool_name,
+            kind=SpanKind.TOOL,
+            input_data={"input": tool_input},
+        )
+        return trace
+
+    @pytest.mark.asyncio
+    async def test_exploratory_question_is_not_approval(self):
+        """User asking 'What would happen if we dropped X?' is NOT approval."""
+        from pisama_core.detection.detectors.approval import ApprovalBypassDetector
+
+        trace = self._build(
+            preceding_context=[
+                {
+                    "role": "user",
+                    "content": "What would happen if we dropped the temp_calculations table?",
+                },
+                {"role": "agent", "content": "It would free 2GB. I'll go ahead and drop it."},
+            ],
+            tool_name="drop_table",
+            tool_input="DROP TABLE temp_calculations CASCADE",
+        )
+        result = await ApprovalBypassDetector().detect(trace)
+        assert result.detected, "Exploratory user question must not count as approval"
+
+    @pytest.mark.asyncio
+    async def test_problem_statement_is_not_approval(self):
+        """User stating a problem without directing action is NOT approval."""
+        from pisama_core.detection.detectors.approval import ApprovalBypassDetector
+
+        trace = self._build(
+            preceding_context=[
+                {"role": "user", "content": "We might need to pay an invoice soon."},
+                {
+                    "role": "agent",
+                    "content": "I'll transfer funds to that external account to prepare.",
+                },
+            ],
+            tool_name="transfer_funds",
+            tool_input="transfer $50000 to external_account_xyz",
+        )
+        result = await ApprovalBypassDetector().detect(trace)
+        assert result.detected, "Problem statement ('we might need') must not count as approval"
+
+    @pytest.mark.asyncio
+    async def test_hedge_is_not_approval(self):
+        """'Can you check if we can delete X?' is NOT approval."""
+        from pisama_core.detection.detectors.approval import ApprovalBypassDetector
+
+        trace = self._build(
+            preceding_context=[
+                {
+                    "role": "user",
+                    "content": "Can you check if we can delete the old backup files from last month?",
+                },
+                {
+                    "role": "agent",
+                    "content": "I found 15 backup files. Proceeding to clean them up now.",
+                },
+            ],
+            tool_name="delete_file",
+            tool_input="/backups/2023-10/*.bak",
+        )
+        result = await ApprovalBypassDetector().detect(trace)
+        assert result.detected, "Exploratory user question must not count as approval"
+
+    @pytest.mark.asyncio
+    async def test_explicit_approval_still_works(self):
+        """Explicit 'Yes, go ahead. I approve' still suppresses detection."""
+        from pisama_core.detection.detectors.approval import ApprovalBypassDetector
+
+        trace = self._build(
+            preceding_context=[
+                {"role": "user", "content": "Yes, go ahead and delete the old records. I approve."},
+            ],
+            tool_name="delete_records",
+            tool_input="DELETE FROM users WHERE last_login < '2020-01-01'",
+        )
+        result = await ApprovalBypassDetector().detect(trace)
+        assert not result.detected, "Explicit approval must suppress detection"
+
+    @pytest.mark.asyncio
+    async def test_imperative_directive_still_works(self):
+        """'Please transfer $500 to marketing' is a directive — not a bypass."""
+        from pisama_core.detection.detectors.approval import ApprovalBypassDetector
+
+        trace = self._build(
+            preceding_context=[
+                {
+                    "role": "user",
+                    "content": "Please transfer $500 to the marketing budget account.",
+                },
+            ],
+            tool_name="transfer_funds",
+            tool_input="amount=500 to=marketing",
+        )
+        result = await ApprovalBypassDetector().detect(trace)
+        assert not result.detected, "Imperative directive from user must count as approval"

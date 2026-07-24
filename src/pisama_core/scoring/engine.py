@@ -3,7 +3,7 @@
 from typing import Any
 
 from pisama_core.detection.result import DetectionResult
-from pisama_core.scoring.thresholds import Thresholds, SeverityLevel
+from pisama_core.scoring.thresholds import SeverityLevel, Thresholds
 
 
 class ScoringEngine:
@@ -73,9 +73,9 @@ class ScoringEngine:
         if total_weight == 0:
             return sum(r.confidence for r in detected_results) / len(detected_results)
 
-        weighted_confidence = sum(
-            r.confidence * r.severity for r in detected_results
-        ) / total_weight
+        weighted_confidence = (
+            sum(r.confidence * r.severity for r in detected_results) / total_weight
+        )
 
         return weighted_confidence
 

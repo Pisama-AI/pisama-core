@@ -4,9 +4,9 @@ from collections import Counter
 from typing import Any
 
 from pisama_core.detection.base import BaseDetector
-from pisama_core.detection.result import DetectionResult, FixRecommendation, FixType
-from pisama_core.traces.models import Trace, Span
+from pisama_core.detection.result import DetectionResult, FixType
 from pisama_core.traces.enums import Platform, SpanKind
+from pisama_core.traces.models import Span, Trace
 
 
 class LoopDetector(BaseDetector):
@@ -79,7 +79,9 @@ class LoopDetector(BaseDetector):
                 severity += 50
             else:
                 severity += 25
-            issues.append(f"Tool '{consecutive['tool']}' repeated {consecutive['count']}x consecutively")
+            issues.append(
+                f"Tool '{consecutive['tool']}' repeated {consecutive['count']}x consecutively"
+            )
             evidence_data["consecutive"] = consecutive
 
         # Check for cyclic patterns
@@ -185,7 +187,7 @@ class LoopDetector(BaseDetector):
             i = 0
 
             while i + length <= len(sequence):
-                if tuple(sequence[i:i + length]) == pattern:
+                if tuple(sequence[i : i + length]) == pattern:
                     matches += 1
                     i += length
                 else:

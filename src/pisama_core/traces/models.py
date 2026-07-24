@@ -1,4 +1,4 @@
-"""Core trace models for PISAMA.
+"""Core trace models for Pisama.
 
 These models provide a universal format for representing agent execution
 traces across all supported platforms (Claude Code, LangGraph, AutoGen,
@@ -148,7 +148,9 @@ class Span:
             kind=SpanKind(data.get("kind", "system")),
             platform=Platform(data.get("platform", "generic")),
             platform_metadata=data.get("platform_metadata", {}),
-            start_time=datetime.fromisoformat(data["start_time"]) if "start_time" in data else _now(),
+            start_time=datetime.fromisoformat(data["start_time"])
+            if "start_time" in data
+            else _now(),
             end_time=datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None,
             status=SpanStatus(data.get("status", "unset")),
             error_message=data.get("error_message"),
@@ -206,7 +208,9 @@ class TraceMetadata:
             platform_version=data.get("platform_version"),
             environment=data.get("environment", "development"),
             host=data.get("host"),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else _now(),
+            created_at=datetime.fromisoformat(data["created_at"])
+            if "created_at" in data
+            else _now(),
             tags=data.get("tags", {}),
             custom=data.get("custom", {}),
         )
@@ -316,10 +320,12 @@ class Trace:
     def to_json(self) -> str:
         """Convert to JSON string."""
         import json
+
         return json.dumps(self.to_dict(), indent=2, default=str)
 
     @classmethod
     def from_json(cls, json_str: str) -> "Trace":
         """Create from JSON string."""
         import json
+
         return cls.from_dict(json.loads(json_str))

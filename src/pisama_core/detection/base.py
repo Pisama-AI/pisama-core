@@ -1,12 +1,12 @@
 """Base detector class."""
 
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
-import time
 
-from pisama_core.traces.models import Trace, Span
-from pisama_core.traces.enums import Platform
 from pisama_core.detection.result import DetectionResult, FixRecommendation
+from pisama_core.traces.enums import Platform
+from pisama_core.traces.models import Span, Trace
 
 
 class BaseDetector(ABC):

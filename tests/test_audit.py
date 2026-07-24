@@ -1,6 +1,5 @@
 """Tests for pisama_core.audit module."""
 
-import pytest
 import json
 import tempfile
 from pathlib import Path

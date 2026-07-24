@@ -5,11 +5,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pisama_core.detection.base import BaseDetector
-from pisama_core.detection.registry import DetectorRegistry, registry as global_registry
+from pisama_core.detection.registry import DetectorRegistry
+from pisama_core.detection.registry import registry as global_registry
 from pisama_core.detection.result import DetectionResult
-from pisama_core.traces.models import Trace, Span
 from pisama_core.traces.enums import Platform
+from pisama_core.traces.models import Span, Trace
+from pisama_core.utils._telemetry import record_first_run as _record_first_run
 
 
 @dataclass
@@ -54,12 +55,16 @@ class AnalysisResult:
         recommendations = []
         for result in self.get_issues():
             for rec in result.all_recommendations:
-                recommendations.append({
-                    "detector": result.detector_name,
-                    "severity": result.severity,
-                    "recommendation": rec.to_dict(),
-                })
-        return sorted(recommendations, key=lambda x: (-x["severity"], x["recommendation"]["priority"]))
+                recommendations.append(
+                    {
+                        "detector": result.detector_name,
+                        "severity": result.severity,
+                        "recommendation": rec.to_dict(),
+                    }
+                )
+        return sorted(
+            recommendations, key=lambda x: (-x["severity"], x["recommendation"]["priority"])
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -144,6 +149,7 @@ class DetectionOrchestrator:
         self.severity_threshold = severity_threshold
         self.block_threshold = block_threshold
         self.parallel = parallel
+        _record_first_run()
 
     async def analyze(self, trace: Trace) -> AnalysisResult:
         """Analyze a complete trace with all applicable detectors.
@@ -170,10 +176,7 @@ class DetectionOrchestrator:
                 return_exceptions=True,
             )
             # Filter out exceptions
-            detection_results = [
-                r for r in results
-                if isinstance(r, DetectionResult)
-            ]
+            detection_results = [r for r in results if isinstance(r, DetectionResult)]
         else:
             detection_results = []
             for detector in detectors:
@@ -208,6 +211,7 @@ class DetectionOrchestrator:
             RealtimeResult with immediate findings
         """
         import time
+
         start = time.perf_counter()
 
         platform = span.platform
@@ -228,11 +232,13 @@ class DetectionOrchestrator:
                     issues.append(result.summary)
                     max_severity = max(max_severity, result.severity)
                     for rec in result.all_recommendations:
-                        recommendations.append({
-                            "detector": result.detector_name,
-                            "severity": result.severity,
-                            **rec.to_dict(),
-                        })
+                        recommendations.append(
+                            {
+                                "detector": result.detector_name,
+                                "severity": result.severity,
+                                **rec.to_dict(),
+                            }
+                        )
             except Exception:
                 # Don't let detector errors block execution
                 pass

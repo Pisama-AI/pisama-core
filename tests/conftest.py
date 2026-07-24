@@ -1,10 +1,9 @@
 """Pytest fixtures for pisama-core tests."""
 
 import pytest
-from datetime import datetime, timezone
 
-from pisama_core.traces.models import Trace, Span, Event, TraceMetadata
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
+from pisama_core.traces.models import Span, Trace, TraceMetadata
 
 
 @pytest.fixture

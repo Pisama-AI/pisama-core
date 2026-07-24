@@ -2,10 +2,10 @@
 
 import pytest
 
-from pisama_core.healing.models import FixContext, FixResult, HealingPlan
+from pisama_core.detection.result import DetectionResult, FixRecommendation, FixType
 from pisama_core.healing.base import BaseFix
 from pisama_core.healing.engine import HealingEngine
-from pisama_core.detection.result import DetectionResult, FixRecommendation, FixType
+from pisama_core.healing.models import FixContext, FixResult, HealingPlan
 from pisama_core.traces.enums import Platform
 
 
@@ -68,7 +68,9 @@ class TestHealingPlan:
         plan = HealingPlan(
             primary_fix=primary,
             fallback_fixes=[
-                FixRecommendation(fix_type=FixType.SWITCH_STRATEGY, instruction="Try different approach"),
+                FixRecommendation(
+                    fix_type=FixType.SWITCH_STRATEGY, instruction="Try different approach"
+                ),
             ],
         )
         assert plan.primary_fix.fix_type == FixType.BREAK_LOOP

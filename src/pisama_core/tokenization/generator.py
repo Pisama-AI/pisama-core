@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TypedDict
 
 
@@ -147,7 +147,7 @@ class TokenGenerator:
                     "pii_type": pii_type,
                     "original_value": original_value,
                     "session_id": self.session_id,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "value_hash": value_hash,
                 }
                 self._token_cache[token] = token_info

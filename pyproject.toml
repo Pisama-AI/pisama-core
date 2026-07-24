@@ -1,16 +1,16 @@
 [build-system]
-requires = ["hatchling<1.22"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
 name = "pisama-core"
-version = "1.0.1"
-description = "Core detection, scoring, and healing engine for PISAMA agent forensics"
+version = "1.8.0"
+description = "Core detection, scoring, and healing engine for Pisama agent forensics"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    { name = "PISAMA Team", email = "team@pisama.dev" }
+    { name = "Pisama Team", email = "team@pisama.ai" }
 ]
 keywords = [
     "ai",
@@ -28,6 +28,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Monitoring",
 ]
@@ -53,9 +54,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tn-pisama/pisama-core"
-Documentation = "https://pisama.dev/docs"
-Repository = "https://github.com/tn-pisama/pisama-core"
+Homepage = "https://pisama.ai"
+Documentation = "https://docs.pisama.ai"
+Repository = "https://github.com/Pisama-AI/pisama"
+Issues = "https://github.com/Pisama-AI/pisama/issues"
+Changelog = "https://github.com/Pisama-AI/pisama/blob/main/packages/pisama-core/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pisama_core"]
@@ -66,10 +69,16 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E402"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

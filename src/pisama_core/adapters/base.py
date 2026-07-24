@@ -6,18 +6,19 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
-from pisama_core.traces.models import Span
 from pisama_core.traces.enums import Platform
+from pisama_core.traces.models import Span
 
 
 class InjectionMethod(str, Enum):
     """Method used for fix injection."""
-    STDERR = "stderr"          # Print to stderr
-    RESOURCE = "resource"      # Update MCP resource
-    STATE = "state"            # Modify agent state
-    MESSAGE = "message"        # Inject message
-    CALLBACK = "callback"      # Trigger callback
-    WEBHOOK = "webhook"        # Send webhook
+
+    STDERR = "stderr"  # Print to stderr
+    RESOURCE = "resource"  # Update MCP resource
+    STATE = "state"  # Modify agent state
+    MESSAGE = "message"  # Inject message
+    CALLBACK = "callback"  # Trigger callback
+    WEBHOOK = "webhook"  # Send webhook
 
 
 @dataclass

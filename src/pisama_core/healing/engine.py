@@ -1,11 +1,11 @@
 """Healing engine for coordinating fix application."""
 
-from typing import Any, Optional
 import time
+from typing import Any, Optional
 
 from pisama_core.detection.result import DetectionResult, FixRecommendation, FixType
-from pisama_core.healing.models import FixContext, FixResult, HealingPlan
 from pisama_core.healing.base import BaseFix
+from pisama_core.healing.models import FixContext, FixResult, HealingPlan
 
 
 class HealingEngine:
@@ -29,9 +29,10 @@ class HealingEngine:
         """Register built-in fixes."""
         from pisama_core.healing.fixes import (
             BreakLoopFix,
-            SwitchStrategyFix,
             EscalateFix,
+            SwitchStrategyFix,
         )
+
         self.register_fix(BreakLoopFix())
         self.register_fix(SwitchStrategyFix())
         self.register_fix(EscalateFix())
