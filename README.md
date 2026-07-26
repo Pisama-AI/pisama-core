@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/pisama-core.svg)](https://pypi.org/project/pisama-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-core.svg)](https://pypi.org/project/pisama-core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/Pisama-AI/pisama/actions/workflows/ci.yml/badge.svg)](https://github.com/Pisama-AI/pisama/actions/workflows/ci.yml)
+[![CI](https://github.com/Pisama-AI/pisama-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Pisama-AI/pisama-core/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/pypi/dm/pisama-core)](https://pypistats.org/packages/pisama-core)
 
 Detection, scoring, and healing engine for AI agent systems. Detect failure modes like infinite loops, hallucinations, cost overruns, and coordination breakdowns in your LLM agents, entirely offline, no API keys required. Each detector returns a binary verdict per failure mode with calibrated confidence.
