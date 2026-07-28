@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-28
+
+### Added
+
+- OpenAI Agents SDK trace adapter (`adapters/openai_agents.py`), exposing
+  `parse_openai_agents_trace` and `parse_openai_agents_span`. Consumes the SDK's own
+  exported tracing payload, i.e. what a `TracingProcessor` receives, so there is no
+  dependency on the `openai-agents` package and no monkey-patching of `Runner`.
+  Handoffs map to the existing `SpanKind.HANDOFF`, and an agent's declared `handoffs`
+  list is kept distinct from the handoff spans that actually fired, so a detector can
+  ask whether a declared route was never taken.
+
+  Distinguished from the existing Assistants and Responses adapters by
+  `platform_version="agents-sdk-v1"`; all three share `Platform.OPENAI`.
+
+  Agents SDK usage reports `input_tokens`/`output_tokens` where the older APIs use
+  `prompt_tokens`/`completion_tokens`; both are normalised to `gen_ai.usage.*`.
+  Spans carry no status field, only an optional error, so an absent error plus a set
+  `ended_at` is success and neither means in-progress. Unknown span types keep their
+  raw payload rather than being dropped.
+
+  Motivated by the OpenAI Agent Builder wind-down on 30 November 2026, which pushes a
+  migration wave toward the Agents SDK.
+
 ## [1.8.2] - 2026-07-23
 
 ### Added
