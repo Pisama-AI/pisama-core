@@ -19,6 +19,12 @@ from pisama_core.adapters.openai import (
 from pisama_core.adapters.openai import (
     parse_response as parse_openai_response,
 )
+from pisama_core.adapters.openai_agents import (
+    parse_agents_span as parse_openai_agents_span,
+)
+from pisama_core.adapters.openai_agents import (
+    parse_agents_trace as parse_openai_agents_trace,
+)
 
 __all__ = [
     "PlatformAdapter",
@@ -26,6 +32,8 @@ __all__ = [
     "InjectionMethod",
     "parse_openai_assistants_run",
     "parse_openai_response",
+    "parse_openai_agents_trace",
+    "parse_openai_agents_span",
     "parse_bedrock_invoke_agent",
     "DeepAgentsAdapter",
     "parse_deep_agents_trace",

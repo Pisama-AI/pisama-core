@@ -1,0 +1,170 @@
+{
+  "_provenance": {
+    "source": "openai-agents 0.19.0, captured via a TracingProcessor",
+    "generated": "2026-07-28",
+    "how": "The SDK-s own trace()/agent_span()/handoff_span()/function_span()/generation_span()/guardrail_span()/custom_span() context managers were driven through a capturing TracingProcessor. Every object here is the verbatim output of TraceImpl.export() / SpanImpl.export().",
+    "no_model_calls": "No OpenAI model was called. Only the tracing machinery ran, so this fixture needs no API key and adds no vendor dependency to the test suite.",
+    "scenario": "TriageAgent hands off to RefundAgent; the refund tool fails with a gateway timeout and an output guardrail then trips."
+  },
+  "traces": [
+    {
+      "object": "trace",
+      "id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "workflow_name": "support-triage",
+      "group_id": "thread_abc123",
+      "metadata": null
+    }
+  ],
+  "spans": [
+    {
+      "object": "trace.span",
+      "id": "span_80f1f329ec3a4cca9b371c4d",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_3d8c79a1c1fa4eaea0a07d54",
+      "started_at": "2026-07-28T17:08:58.609620+00:00",
+      "ended_at": "2026-07-28T17:08:58.609625+00:00",
+      "span_data": {
+        "type": "generation",
+        "input": [
+          {
+            "role": "user",
+            "content": "I want a refund for order 4417"
+          }
+        ],
+        "output": [
+          {
+            "role": "assistant",
+            "content": "Handing you to refunds."
+          }
+        ],
+        "model": "gpt-4.1",
+        "model_config": null,
+        "usage": {
+          "input_tokens": 412,
+          "output_tokens": 37
+        }
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_af423c3cd4864257a258cb56",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_3d8c79a1c1fa4eaea0a07d54",
+      "started_at": "2026-07-28T17:08:58.609643+00:00",
+      "ended_at": "2026-07-28T17:08:58.609645+00:00",
+      "span_data": {
+        "type": "function",
+        "name": "lookup_order",
+        "input": "{\"order_id\": \"4417\"}",
+        "output": "{\"status\": \"shipped\", \"total\": 89.99}",
+        "mcp_data": null
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_fae514571e774806b7d20ce6",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_3d8c79a1c1fa4eaea0a07d54",
+      "started_at": "2026-07-28T17:08:58.609655+00:00",
+      "ended_at": "2026-07-28T17:08:58.609657+00:00",
+      "span_data": {
+        "type": "handoff",
+        "from_agent": "TriageAgent",
+        "to_agent": "RefundAgent"
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_3d8c79a1c1fa4eaea0a07d54",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": null,
+      "started_at": "2026-07-28T17:08:58.609411+00:00",
+      "ended_at": "2026-07-28T17:08:58.609660+00:00",
+      "span_data": {
+        "type": "agent",
+        "name": "TriageAgent",
+        "handoffs": [
+          "RefundAgent",
+          "BillingAgent"
+        ],
+        "tools": [
+          "lookup_order"
+        ],
+        "output_type": "str"
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_65d5bc276b754bc1818ac451",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_1d7ba5e1f945465caca12ba6",
+      "started_at": "2026-07-28T17:08:58.609676+00:00",
+      "ended_at": "2026-07-28T17:08:58.609678+00:00",
+      "span_data": {
+        "type": "function",
+        "name": "issue_refund",
+        "input": "{\"order_id\": \"4417\"}",
+        "output": null,
+        "mcp_data": null
+      },
+      "error": {
+        "message": "payment gateway timeout",
+        "data": {
+          "code": 504
+        }
+      }
+    },
+    {
+      "object": "trace.span",
+      "id": "span_cef4a368c630483cb3aab69e",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_1d7ba5e1f945465caca12ba6",
+      "started_at": "2026-07-28T17:08:58.609689+00:00",
+      "ended_at": "2026-07-28T17:08:58.609691+00:00",
+      "span_data": {
+        "type": "guardrail",
+        "name": "refund_limit_guardrail",
+        "triggered": true
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_41fd72daca224eb782e42b07",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": "span_1d7ba5e1f945465caca12ba6",
+      "started_at": "2026-07-28T17:08:58.609779+00:00",
+      "ended_at": "2026-07-28T17:08:58.609781+00:00",
+      "span_data": {
+        "type": "custom",
+        "name": "escalation",
+        "data": {
+          "reason": "guardrail_tripped"
+        }
+      },
+      "error": null
+    },
+    {
+      "object": "trace.span",
+      "id": "span_1d7ba5e1f945465caca12ba6",
+      "trace_id": "trace_0c9391c118e94b91a1dc5d84864beb63",
+      "parent_id": null,
+      "started_at": "2026-07-28T17:08:58.609669+00:00",
+      "ended_at": "2026-07-28T17:08:58.609784+00:00",
+      "span_data": {
+        "type": "agent",
+        "name": "RefundAgent",
+        "handoffs": [],
+        "tools": [
+          "issue_refund"
+        ],
+        "output_type": "str"
+      },
+      "error": null
+    }
+  ]
+}
