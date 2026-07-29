@@ -28,14 +28,16 @@ what already happened.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
 from pisama_core.traces.models import Span, Trace, TraceMetadata
 from pisama_core.utils.time_utils import parse_iso_datetime
 
 __all__ = [
+    "PisamaTracingProcessor",
     "parse_agents_trace",
     "parse_agents_span",
 ]
@@ -286,3 +288,95 @@ def _ts(value: Any) -> Optional[datetime]:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class PisamaTracingProcessor:
+    """A `TracingProcessor` for the OpenAI Agents SDK.
+
+    Register it once and every completed run is delivered to your callback as a
+    Pisama `Trace`::
+
+        from agents.tracing import add_trace_processor
+        from pisama_core.adapters import PisamaTracingProcessor
+
+        add_trace_processor(PisamaTracingProcessor(on_trace=my_handler))
+
+    `add_trace_processor` keeps the SDK's own exporter registered alongside this
+    one, so OpenAI tracing continues to receive the same spans. Use
+    `set_trace_processors` instead to make Pisama the only destination.
+
+    This class deliberately does **not** import or subclass
+    `agents.tracing.TracingProcessor`. The SDK dispatches by duck typing, so
+    implementing the six methods is sufficient, and `pisama-core` stays free of a
+    vendor dependency. The trade-off is that a future SDK release could widen the
+    interface without a type error here; `on_trace` would simply stop being
+    called, which the tests guard by asserting the method set.
+
+    Spans are buffered per trace id rather than in one list, because concurrent
+    runs interleave `on_span_end` calls and a single buffer would attribute one
+    run's spans to another. The buffer is mutated under a lock: the SDK may
+    dispatch from more than one thread.
+    """
+
+    def __init__(self, on_trace: Optional[Callable[[Trace], None]] = None) -> None:
+        """
+        Args:
+            on_trace: Called with the parsed `Trace` when a run completes. If
+                omitted, traces are parsed and dropped, which is only useful for
+                measuring overhead.
+        """
+        self._on_trace = on_trace
+        self._spans: Dict[str, List[dict]] = {}
+        self._lock = threading.Lock()
+
+    # --- TracingProcessor interface ---
+
+    def on_trace_start(self, trace: Any) -> None:
+        return None
+
+    def on_span_start(self, span: Any) -> None:
+        return None
+
+    def on_span_end(self, span: Any) -> None:
+        exported = _export(span)
+        if not exported:
+            return
+        trace_id = str(exported.get("trace_id") or "")
+        with self._lock:
+            self._spans.setdefault(trace_id, []).append(exported)
+
+    def on_trace_end(self, trace: Any) -> None:
+        exported = _export(trace)
+        if not exported:
+            return
+        trace_id = str(exported.get("id") or "")
+        with self._lock:
+            spans = self._spans.pop(trace_id, [])
+        parsed = parse_agents_trace(exported, spans)
+        if self._on_trace is not None:
+            self._on_trace(parsed)
+
+    def force_flush(self) -> None:
+        return None
+
+    def shutdown(self) -> None:
+        """Drop any spans whose trace never ended, so a long process cannot leak."""
+        with self._lock:
+            self._spans.clear()
+
+
+def _export(obj: Any) -> Optional[dict]:
+    """Call `.export()` defensively.
+
+    The SDK's own exporters tolerate a span or trace that declines to export
+    (`export()` may return None), and a processor that raised here would take
+    down the caller's run for the sake of telemetry.
+    """
+    export = getattr(obj, "export", None)
+    if export is None:
+        return None
+    try:
+        result = export()
+    except Exception:
+        return None
+    return result if isinstance(result, dict) else None

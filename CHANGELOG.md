@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-28
+
+### Added
+
+- `PisamaTracingProcessor` for the OpenAI Agents SDK, so registering Pisama is one
+  line instead of hand-writing a processor:
+
+  ```python
+  from agents.tracing import add_trace_processor
+  from pisama_core.adapters import PisamaTracingProcessor
+
+  add_trace_processor(PisamaTracingProcessor(on_trace=my_handler))
+  ```
+
+  1.9.0 shipped only `parse_agents_trace`, which left every user to author the
+  processor boilerplate themselves. An OpenAI maintainer declined the tracing-
+  processor listing on exactly that basis: the package parsed the SDK's output but
+  did not implement its interface.
+
+  The class deliberately does not import or subclass
+  `agents.tracing.TracingProcessor`. The SDK dispatches by duck typing, so
+  implementing the six methods is sufficient and `pisama-core` stays free of a vendor
+  dependency. A test registers it with the real SDK and asserts a live run arrives.
+
+  Spans are buffered per trace id under a lock, because concurrent runs interleave
+  `on_span_end` calls and a single buffer would attribute one run's spans to another.
+  A failing or absent `export()` is swallowed: telemetry must not take down the run
+  it observes.
+
 ## [1.9.0] - 2026-07-28
 
 ### Added
