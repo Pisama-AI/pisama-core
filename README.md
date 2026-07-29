@@ -71,7 +71,7 @@ Prefer to analyze a trace file in one line? Install the `pisama` wrapper
 example loop trace to try it:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Pisama-AI/pisama/main/examples/trace.json
+curl -O https://raw.githubusercontent.com/Pisama-AI/pisama-core/main/examples/trace.json
 ```
 
 ## Using Pisama?

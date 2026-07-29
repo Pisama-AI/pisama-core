@@ -1,0 +1,13 @@
+{
+  "trace_id": "demo-loop-001",
+  "spans": [
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}},
+    {"name": "Read", "kind": "tool", "input_data": {"path": "config.yaml"}}
+  ]
+}
