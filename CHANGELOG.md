@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-07-29
+
+### Fixed
+
+- Corrected the detector count in the Pisama Platform section of the README. It
+  previously advertised the hosted platform as having "25+ calibrated detectors",
+  which understated it below the 32 detectors this MIT-licensed package already
+  registers at runtime. The section now states the verifiable local count (32) and
+  describes the hosted platform as running a larger set without asserting a
+  specific number.
+
 ## [1.9.0] - 2026-07-28
 
 ### Added
