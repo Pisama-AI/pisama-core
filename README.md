@@ -71,7 +71,7 @@ Prefer to analyze a trace file in one line? Install the `pisama` wrapper
 example loop trace to try it:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Pisama-AI/pisama/main/examples/trace.json
+curl -O https://raw.githubusercontent.com/Pisama-AI/pisama-core/main/examples/trace.json
 ```
 
 ## Using Pisama?
@@ -165,7 +165,7 @@ Works with Claude Agent SDK, LangGraph, AutoGen, CrewAI, n8n, Dify, and custom a
 
 ## Pisama Platform
 
-For production monitoring with 25+ calibrated detectors, ML-based detection, LLM-as-judge verification, and a dashboard, see [pisama.ai](https://pisama.ai).
+`pisama-core`'s built-in detectors run entirely offline with no API key. The hosted Pisama platform runs a larger calibrated detector set on top of those, and adds ML-based detection, LLM-as-judge verification, and a dashboard. See [pisama.ai](https://pisama.ai).
 
 ## Design Partner Program
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,7 +7,8 @@ name = "pisama-core"
 version = "1.10.0"
 description = "Core detection, scoring, and healing engine for Pisama agent forensics"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
     { name = "Pisama Team", email = "team@pisama.ai" }
@@ -23,7 +24,6 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
