@@ -165,7 +165,7 @@ Works with Claude Agent SDK, LangGraph, AutoGen, CrewAI, n8n, Dify, and custom a
 
 ## Pisama Platform
 
-`pisama-core` registers 32 detectors at runtime, and they run entirely offline with no API key. The hosted Pisama platform runs a larger calibrated detector set on top of those, and adds ML-based detection, LLM-as-judge verification, and a dashboard. See [pisama.ai](https://pisama.ai).
+`pisama-core`'s built-in detectors run entirely offline with no API key. The hosted Pisama platform runs a larger calibrated detector set on top of those, and adds ML-based detection, LLM-as-judge verification, and a dashboard. See [pisama.ai](https://pisama.ai).
 
 ## Design Partner Program
 
