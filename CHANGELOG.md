@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-07-29
+
+### Fixed
+
+- The README's "grab a ready-made example loop trace" snippet pointed at
+  `raw.githubusercontent.com/Pisama-AI/pisama/main/examples/trace.json`, which
+  returns 404 for everyone. That path lives in a private repository, so the very
+  first command a new user runs from the README could never have worked. The
+  example trace now ships in this public repository as `examples/trace.json` and
+  the snippet points there. The README renders on PyPI, so this dead link was
+  visible on the project page.
+
+### Changed
+
+- `license` moved from the deprecated `{text = "MIT"}` table to the PEP 639
+  string form, with `license-files = ["LICENSE"]` declared explicitly. Published
+  metadata now carries `License-Expression: MIT` instead of the free-text
+  `License:` field, so the licence is machine-readable by SPDX-aware tooling.
+
+  The build backend requirement is raised to `hatchling>=1.27.0` as part of this.
+  Older hatchling accepts the string form without error but writes it back out as
+  the legacy `License:` field, which would have made this change a silent no-op on
+  the registry. The floor is what makes the fix take effect.
+
+## [1.9.1] - 2026-07-29
+
+### Fixed
+
+- Corrected the detector count in the Pisama Platform section of the README. It
+  previously advertised the hosted platform as having "25+ calibrated detectors",
+  which understated it below the 32 detectors this MIT-licensed package already
+  registers at runtime. The section now states the verifiable local count (32) and
+  describes the hosted platform as running a larger set without asserting a
+  specific number.
+
+## [1.9.0] - 2026-07-28
+
+### Added
+
+- OpenAI Agents SDK trace adapter (`adapters/openai_agents.py`), exposing
+  `parse_openai_agents_trace` and `parse_openai_agents_span`. Consumes the SDK's own
+  exported tracing payload, i.e. what a `TracingProcessor` receives, so there is no
+  dependency on the `openai-agents` package and no monkey-patching of `Runner`.
+  Handoffs map to the existing `SpanKind.HANDOFF`, and an agent's declared `handoffs`
+  list is kept distinct from the handoff spans that actually fired, so a detector can
+  ask whether a declared route was never taken.
+
+  Distinguished from the existing Assistants and Responses adapters by
+  `platform_version="agents-sdk-v1"`; all three share `Platform.OPENAI`.
+
+  Agents SDK usage reports `input_tokens`/`output_tokens` where the older APIs use
+  `prompt_tokens`/`completion_tokens`; both are normalised to `gen_ai.usage.*`.
+  Spans carry no status field, only an optional error, so an absent error plus a set
+  `ended_at` is success and neither means in-progress. Unknown span types keep their
+  raw payload rather than being dropped.
+
+  Motivated by the OpenAI Agent Builder wind-down on 30 November 2026, which pushes a
+  migration wave toward the Agents SDK.
+
 ## [1.8.2] - 2026-07-23
 
 ### Added

@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/pisama-core.svg)](https://pypi.org/project/pisama-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/pisama-core.svg)](https://pypi.org/project/pisama-core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/Pisama-AI/pisama/actions/workflows/ci.yml/badge.svg)](https://github.com/Pisama-AI/pisama/actions/workflows/ci.yml)
+[![CI](https://github.com/Pisama-AI/pisama-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Pisama-AI/pisama-core/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/pypi/dm/pisama-core)](https://pypistats.org/packages/pisama-core)
 
 Detection, scoring, and healing engine for AI agent systems. Detect failure modes like infinite loops, hallucinations, cost overruns, and coordination breakdowns in your LLM agents, entirely offline, no API keys required. Each detector returns a binary verdict per failure mode with calibrated confidence.
@@ -71,7 +71,7 @@ Prefer to analyze a trace file in one line? Install the `pisama` wrapper
 example loop trace to try it:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Pisama-AI/pisama/main/examples/trace.json
+curl -O https://raw.githubusercontent.com/Pisama-AI/pisama-core/main/examples/trace.json
 ```
 
 ## Using Pisama?
@@ -165,7 +165,7 @@ Works with Claude Agent SDK, LangGraph, AutoGen, CrewAI, n8n, Dify, and custom a
 
 ## Pisama Platform
 
-For production monitoring with 25+ calibrated detectors, ML-based detection, LLM-as-judge verification, and a dashboard, see [pisama.ai](https://pisama.ai).
+`pisama-core`'s built-in detectors run entirely offline with no API key. The hosted Pisama platform runs a larger calibrated detector set on top of those, and adds ML-based detection, LLM-as-judge verification, and a dashboard. See [pisama.ai](https://pisama.ai).
 
 ## Design Partner Program
 
