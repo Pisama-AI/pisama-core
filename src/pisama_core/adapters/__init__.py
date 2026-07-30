@@ -19,6 +19,7 @@ from pisama_core.adapters.openai import (
 from pisama_core.adapters.openai import (
     parse_response as parse_openai_response,
 )
+from pisama_core.adapters.openai_agents import PisamaTracingProcessor
 from pisama_core.adapters.openai_agents import (
     parse_agents_span as parse_openai_agents_span,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "InjectionMethod",
     "parse_openai_assistants_run",
     "parse_openai_response",
+    "PisamaTracingProcessor",
     "parse_openai_agents_trace",
     "parse_openai_agents_span",
     "parse_bedrock_invoke_agent",
