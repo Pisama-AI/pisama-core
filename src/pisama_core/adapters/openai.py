@@ -41,9 +41,13 @@ def _gen_ai_usage_attrs(usage: Any, model: Any = None) -> dict[str, Any]:
     if not isinstance(usage, dict):
         return {}
     out: dict[str, Any] = {}
-    if (pt := usage.get("prompt_tokens")) is not None:
+    # The two OpenAI surfaces name these differently: Assistants reports
+    # prompt_tokens/completion_tokens, the Responses API reports
+    # input_tokens/output_tokens. Accepting only the former silently dropped
+    # every Responses-API token split.
+    if (pt := usage.get("prompt_tokens", usage.get("input_tokens"))) is not None:
         out["gen_ai.usage.input_tokens"] = pt
-    if (ct := usage.get("completion_tokens")) is not None:
+    if (ct := usage.get("completion_tokens", usage.get("output_tokens"))) is not None:
         out["gen_ai.usage.output_tokens"] = ct
     if (tt := usage.get("total_tokens")) is not None:
         out["gen_ai.usage.total_tokens"] = tt
@@ -221,8 +225,28 @@ def _parse_tool_call(
     step: dict[str, Any],
 ) -> Span:
     call_type = str(call.get("type") or "function")
-    fn = call.get("function") or {}
-    name = str(fn.get("name") or call_type)
+    # Every tool-call variant nests its payload under a key named after its own
+    # type: function -> {name, arguments, output}, code_interpreter ->
+    # {input, outputs}, file_search -> {ranking_options, results}. Reading only
+    # `function` silently reduced every other variant to nulls, discarding the
+    # executed code and its outputs entirely.
+    payload = call.get(call_type)
+    payload = payload if isinstance(payload, dict) else {}
+    name = str(payload.get("name") or call_type)
+    if call_type == "function":
+        input_data: dict[str, Any] = {"arguments": payload.get("arguments")}
+        output_data: dict[str, Any] = {"output": payload.get("output")}
+    elif call_type == "code_interpreter":
+        input_data = {"input": payload.get("input")}
+        output_data = {"outputs": payload.get("outputs")}
+    elif call_type == "file_search":
+        input_data = {"ranking_options": payload.get("ranking_options")}
+        output_data = {"results": payload.get("results")}
+    else:
+        # An unrecognised variant keeps its payload verbatim rather than being
+        # dropped; a future OpenAI tool type degrades to "unparsed" not "lost".
+        input_data = {"payload": payload}
+        output_data = {}
     return Span(
         trace_id=trace_id,
         parent_id=parent_id,
@@ -241,8 +265,8 @@ def _parse_tool_call(
             "openai.tool.type": call_type,
             "openai.tool.name": name,
         },
-        input_data={"arguments": fn.get("arguments")},
-        output_data={"output": fn.get("output")},
+        input_data=input_data,
+        output_data=output_data,
     )
 
 

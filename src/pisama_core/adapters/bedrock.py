@@ -67,6 +67,13 @@ def _gen_ai_usage_attrs(usage: Any, model: Any = None) -> dict[str, Any]:
     return out
 
 
+def _gen_ai_model_attrs(model: Any) -> dict[str, Any]:
+    """Emit `gen_ai.request.model` when Bedrock names the foundation model."""
+    if model in (None, ""):
+        return {}
+    return {"gen_ai.request.model": str(model), "gen_ai.system": "bedrock"}
+
+
 def parse_invoke_agent(
     session_id: str,
     agent_id: str,
@@ -123,6 +130,13 @@ def parse_invoke_agent(
         node = chunk.get("trace") if "trace" in chunk else chunk
         if not isinstance(node, dict):
             continue
+
+        # `eventTime` lives on the TracePart envelope, not inside the trace
+        # node. Without it every child span falls back to ingestion time, which
+        # made trace duration microseconds against a multi-second invocation.
+        event_time = _ts_iso(chunk.get("eventTime"))
+        started, ended = _node_times(node)
+        first_new_span = len(trace.spans)
 
         if "orchestrationTrace" in node:
             trace.spans.extend(
@@ -197,6 +211,16 @@ def parse_invoke_agent(
                 )
             )
 
+        # Bedrock times every trace part, and several nodes carry a finer
+        # `metadata.startTime`/`endTime` pair. The span constructors above leave
+        # both fields at their dataclass default, so stamp whatever this chunk
+        # produced rather than thread a timestamp through every constructor.
+        for span in trace.spans[first_new_span:]:
+            if started or event_time:
+                span.start_time = started or event_time
+            if ended:
+                span.end_time = ended
+
     if final_answer is not None:
         trace.spans.append(
             Span(
@@ -220,7 +244,18 @@ def parse_invoke_agent(
         earliest = min(child_starts)
         if earliest < root.start_time:
             root.start_time = earliest
-    root.end_time = _now()
+    # The root must end when the trace ended, not when Pisama parsed it. Once
+    # child spans carry real Bedrock times, closing the root at _now() reports
+    # the gap between the invocation and its ingestion as the agent's latency.
+    child_ends = [
+        s.end_time for s in trace.spans if s.span_id != root.span_id and s.end_time is not None
+    ]
+    if child_ends:
+        root.end_time = max(child_ends + child_starts) if child_starts else max(child_ends)
+    elif child_starts:
+        root.end_time = max(child_starts)
+    else:
+        root.end_time = _now()
     return trace
 
 
@@ -247,7 +282,14 @@ def _parse_orchestration(
                 kind=SpanKind.LLM,
                 platform=Platform.BEDROCK,
                 status=SpanStatus.IN_PROGRESS,
-                attributes={"bedrock.invocation.type": mi.get("type")},
+                # `foundationModel` is the only place the model id appears in
+                # an orchestration stream, and it sits on the INPUT node.
+                # `modelInvocationOutput` cannot carry it: OrchestrationTrace is
+                # a union, so input and output always arrive as separate nodes.
+                attributes={
+                    "bedrock.invocation.type": mi.get("type"),
+                    **_gen_ai_model_attrs(mi.get("foundationModel")),
+                },
                 input_data={"text": mi.get("text"), "parameters": mi.get("inferenceConfiguration")},
             )
         )
@@ -392,6 +434,49 @@ def _generic_step_span(
         attributes={"bedrock.trace.keys": list(node.keys())},
         input_data=node,
     )
+
+
+def _node_times(node: dict[str, Any]) -> tuple[Optional[datetime], Optional[datetime]]:
+    """Find the finest start/end times a trace node offers.
+
+    Model-invocation, action-group, final-response, failure and guardrail nodes
+    all nest a `metadata` object carrying `startTime` and `endTime`. They sit one
+    or two levels below the trace node depending on the variant, so search
+    rather than hard-code a path.
+    """
+
+    def walk(value: Any, depth: int) -> tuple[Optional[datetime], Optional[datetime]]:
+        if depth > 3 or not isinstance(value, dict):
+            return None, None
+        meta = value.get("metadata")
+        if isinstance(meta, dict):
+            start = _ts_iso(meta.get("startTime"))
+            end = _ts_iso(meta.get("endTime"))
+            if start or end:
+                return start, end
+        for nested in value.values():
+            start, end = walk(nested, depth + 1)
+            if start or end:
+                return start, end
+        return None, None
+
+    return walk(node, 0)
+
+
+def _ts_iso(value: Any) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp as emitted by Bedrock.
+
+    `TracePart.eventTime` and the per-node `Metadata` start/end times are
+    `SyntheticTimestamp_date_time`, serialised with a trailing `Z`.
+    """
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _now() -> datetime:
