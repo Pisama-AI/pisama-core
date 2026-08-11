@@ -226,10 +226,13 @@ def _parse_tool_call(
 ) -> Span:
     call_type = str(call.get("type") or "function")
     # Every tool-call variant nests its payload under a key named after its own
-    # type: function -> {name, arguments, output}, code_interpreter ->
-    # {input, outputs}, file_search -> {ranking_options, results}. Reading only
-    # `function` silently reduced every other variant to nulls, discarding the
-    # executed code and its outputs entirely.
+    # variant name: `function` holds {name, arguments, output}, while
+    # `code_interpreter` holds {input, outputs} and `file_search` holds
+    # {ranking_options, results}. Reading only `function` silently reduced every
+    # other variant to nulls, discarding the executed code and its outputs.
+    #
+    # (Keep "type:" off the start of any line here: mypy reads `# type:` as a
+    # PEP 484 type comment and fails the file with a syntax error.)
     payload = call.get(call_type)
     payload = payload if isinstance(payload, dict) else {}
     name = str(payload.get("name") or call_type)

@@ -215,10 +215,11 @@ def parse_invoke_agent(
         # `metadata.startTime`/`endTime` pair. The span constructors above leave
         # both fields at their dataclass default, so stamp whatever this chunk
         # produced rather than thread a timestamp through every constructor.
+        stamped_start = started or event_time
         for span in trace.spans[first_new_span:]:
-            if started or event_time:
-                span.start_time = started or event_time
-            if ended:
+            if stamped_start is not None:
+                span.start_time = stamped_start
+            if ended is not None:
                 span.end_time = ended
 
     if final_answer is not None:
