@@ -1,29 +1,55 @@
 """Gemini Interactions API trace ingestion adapter.
 
-Converts a Gemini Interactions API response envelope into Pisama's universal
+Converts a Gemini Interactions API ``Interaction`` into Pisama's universal
 Span/Trace format. Ingestion-only — the Interactions API is a managed runtime
 with no pre-execution hook surface, so blocking and fix injection are not
 supported (same stance as bedrock.py).
 
-The Interactions API is Beta; the response envelope tracks
-https://ai.google.dev/gemini-api/docs/interactions. The parser reads these
-top-level fields when present and ignores anything it doesn't recognise:
+The shape below is the vendor's, read from ``google.genai.interactions`` in
+google-genai 2.17.0 (inner ``_gaos`` SDK 2.4.1-preview.5, OpenAPI v1beta) and
+pinned by the fixtures under ``tests/fixtures/``. It is deliberately spelled out
+because an earlier version of this adapter targeted an envelope the API never
+returned — ``messages[]``, ``tool_calls[]``, ``candidates[]``, ``state.tasks[]``,
+``session_id``, ``created_at``/``finished_at``, ``usage_metadata`` — of which the
+real ``Interaction`` has none. A real response parsed to almost nothing.
 
-- ``id`` / ``name``                    interaction identifier
-- ``session_id`` / ``session``         session identifier (falls back to caller arg)
-- ``model``                            model name, e.g. ``gemini-3.1-pro``
-- ``created_at`` / ``start_time``      interaction start (ISO 8601)
-- ``finished_at`` / ``end_time``       interaction end   (ISO 8601)
-- ``status``                           ``COMPLETED`` | ``RUNNING`` | ``FAILED``
-- ``operation_name``                   long-running op handle (mark root IN_PROGRESS)
-- ``messages[]``                       conversation messages (user/model/tool)
-- ``tool_calls[]``                     tool invocations with args/result
-- ``state.tasks[]``                    decomposed goals (feeds decomposition detector)
-- ``candidates[]``                     model completions with safety_ratings
-- ``usage_metadata``                   ``{prompt,candidates,total}_token_count``
+Top-level fields read here:
 
-The adapter does NOT import ``google-genai``. Accepts dicts that match the
-documented JSON shape so callers can pass whatever their SDK version returns.
+- ``id``                    interaction identifier (a resource path, not a bare id)
+- ``created`` / ``updated`` ISO-8601 strings, not epoch numbers
+- ``status``                lowercase: ``in_progress`` | ``requires_action`` |
+                            ``completed`` | ``failed`` | ``cancelled`` |
+                            ``incomplete`` | ``budget_exceeded`` | ``queued``
+- ``model``                 model name
+- ``usage``                 ``total_input_tokens`` / ``total_output_tokens`` /
+                            ``total_tokens`` (+ thought / cached / tool-use)
+- ``errors[]``              ``{code, message}``; ``code`` is a URI string.
+                            There is no top-level ``error``.
+- ``steps[]``               the conversation, as a union discriminated on ``type``
+- ``environment_id``, ``previous_interaction_id``, ``system_instruction``
+
+``steps[]`` variants and their payload keys:
+
+- ``user_input``       ``content``
+- ``model_output``     ``content``, ``error`` (a google.rpc ``Status``:
+                       ``{code:int, message, details}`` — NOT the interaction-level
+                       ``Error``)
+- ``thought``          ``summary`` (a list of content blocks, not a string),
+                       ``signature``
+- ``function_call``    ``name``, ``id``, ``arguments`` (a dict, not a JSON string)
+- ``function_result``  ``name``, ``call_id``, ``result``, ``is_error``
+- ``*_call`` / ``*_result`` for code execution, URL context, MCP server tools,
+  Google Search, File Search and Google Maps
+
+Two shape notes that drive decisions below. **Steps carry no timestamps** — the
+interaction has ``created``/``updated`` and nothing per step. And ``output_text``
+is recomputed by the SDK from the trailing ``model_output`` on every validation,
+so it is a client-side convenience rather than a wire field; the trailing
+``model_output`` step is the source of truth.
+
+The adapter does NOT import ``google-genai``. It accepts dicts matching the
+serialized shape so callers can pass ``.model_dump(mode="json")`` or the raw
+HTTP payload.
 """
 
 from __future__ import annotations
@@ -32,38 +58,87 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
-from pisama_core.traces.models import Event, Span, Trace, TraceMetadata
+from pisama_core.traces.models import Span, Trace, TraceMetadata
 
 __all__ = ["parse_interactions_response"]
 
 
-_PLATFORM_VERSION = "interactions-beta-v1"
+_PLATFORM_VERSION = "interactions-v1beta"
+
+# Interaction.status -> span status. The API's terminal states are richer than
+# ok/error: `cancelled` is a caller action, and `incomplete` / `budget_exceeded`
+# are the runtime stopping short of the goal, which is a failure to complete
+# rather than a crash. Everything unfinished maps to IN_PROGRESS so a polled
+# interaction is never mistaken for a finished one.
+_STATUS_MAP: dict[str, SpanStatus] = {
+    "completed": SpanStatus.OK,
+    "failed": SpanStatus.ERROR,
+    "cancelled": SpanStatus.CANCELLED,
+    "incomplete": SpanStatus.ERROR,
+    "budget_exceeded": SpanStatus.ERROR,
+    "in_progress": SpanStatus.IN_PROGRESS,
+    "queued": SpanStatus.IN_PROGRESS,
+    "requires_action": SpanStatus.IN_PROGRESS,
+}
+
+# Step type -> span kind. Retrieval-shaped tools are separated from function
+# calls so retrieval detectors see them; `thought` is reasoning rather than
+# conversation, and is mapped to TASK to match how the ADK adapter records
+# planner output.
+_STEP_KINDS: dict[str, SpanKind] = {
+    "user_input": SpanKind.USER_INPUT,
+    "model_output": SpanKind.LLM,
+    "thought": SpanKind.TASK,
+    "function_call": SpanKind.TOOL,
+    "function_result": SpanKind.TOOL,
+    "code_execution_call": SpanKind.TOOL,
+    "code_execution_result": SpanKind.TOOL,
+    "mcp_server_tool_call": SpanKind.TOOL,
+    "mcp_server_tool_result": SpanKind.TOOL,
+    "google_search_call": SpanKind.RETRIEVAL,
+    "google_search_result": SpanKind.RETRIEVAL,
+    "file_search_call": SpanKind.RETRIEVAL,
+    "file_search_result": SpanKind.RETRIEVAL,
+    "url_context_call": SpanKind.RETRIEVAL,
+    "url_context_result": SpanKind.RETRIEVAL,
+    "google_maps_call": SpanKind.RETRIEVAL,
+    "google_maps_result": SpanKind.RETRIEVAL,
+}
+
+_RESULT_SUFFIX = "_result"
 
 
 def _gen_ai_usage_attrs(usage: Any, model: Any = None) -> dict[str, Any]:
-    """Translate a Gemini ``usage_metadata`` payload into OTEL ``gen_ai.usage.*``.
+    """Translate an Interactions ``usage`` payload into OTEL ``gen_ai.usage.*``.
 
-    Gemini reports tokens as ``prompt_token_count`` / ``candidates_token_count``
-    / ``total_token_count``. Detectors across the codebase read ``gen_ai.usage.*``
-    only, so every adapter must translate to the OTEL naming to keep
-    detectors vendor-neutral.
+    The Interactions API reports ``total_input_tokens`` / ``total_output_tokens``
+    / ``total_tokens``. It does NOT use ``prompt_token_count`` /
+    ``candidates_token_count``; those belong to ``generateContent``, a different
+    surface, and reading them here yielded no usage at all.
+
+    Thought, cached and tool-use tokens have no OTEL equivalent, so they are kept
+    under ``gemini.usage.*`` rather than being folded into the standard keys and
+    silently inflating them.
     """
     if not isinstance(usage, dict):
         return {}
     out: dict[str, Any] = {}
-    if (pt := usage.get("prompt_token_count")) is not None:
-        out["gen_ai.usage.input_tokens"] = pt
-    if (ct := usage.get("candidates_token_count")) is not None:
-        out["gen_ai.usage.output_tokens"] = ct
-    total = usage.get("total_token_count")
-    if (
-        total is None
-        and (pt := usage.get("prompt_token_count")) is not None
-        and (ct := usage.get("candidates_token_count")) is not None
-    ):
-        total = int(pt) + int(ct)
+    if (it := usage.get("total_input_tokens")) is not None:
+        out["gen_ai.usage.input_tokens"] = it
+    if (ot := usage.get("total_output_tokens")) is not None:
+        out["gen_ai.usage.output_tokens"] = ot
+    total = usage.get("total_tokens")
+    if total is None and it is not None and ot is not None:
+        total = int(it) + int(ot)
     if total is not None:
         out["gen_ai.usage.total_tokens"] = total
+    for key, attr in (
+        ("total_thought_tokens", "gemini.usage.thought_tokens"),
+        ("total_cached_tokens", "gemini.usage.cached_tokens"),
+        ("total_tool_use_tokens", "gemini.usage.tool_use_tokens"),
+    ):
+        if (value := usage.get(key)) is not None:
+            out[attr] = value
     if model is not None:
         out["gen_ai.request.model"] = str(model)
     out["gen_ai.system"] = "gemini"
@@ -74,223 +149,184 @@ def parse_interactions_response(
     response: dict[str, Any],
     session_id: Optional[str] = None,
 ) -> Trace:
-    """Parse a Gemini Interactions API response envelope into a Pisama Trace.
+    """Parse a Gemini Interactions API ``Interaction`` into a Pisama Trace.
 
     Args:
-        response: The decoded JSON response from the Interactions API (or a
-            poll response for a long-running operation).
-        session_id: Session ID to record on ``TraceMetadata``. Falls back to
-            ``response['session_id']`` then ``response['session']``.
+        response: The decoded JSON of an ``Interaction`` (or a poll response for
+            one still running). Accepts ``.model_dump(mode="json")`` output.
+        session_id: Session ID to record on ``TraceMetadata``. The Interactions
+            API has no session field, so this falls back to ``environment_id``
+            (the nearest equivalent) and then to the interaction id.
 
     Returns:
-        A ``Trace`` with one AGENT_TURN root span and child spans for each
-        message, tool call, decomposed task, and candidate completion.
+        A ``Trace`` with one AGENT_TURN root span and one child span per step,
+        with result steps parented to the call they answer.
     """
     if not isinstance(response, dict):
         raise TypeError("response must be a dict")
 
-    interaction_id = response.get("id") or response.get("name") or "interaction"
-    session = session_id or response.get("session_id") or response.get("session")
+    interaction_id = str(response.get("id") or "interaction")
     model = response.get("model")
-    start = _parse_iso(response.get("created_at") or response.get("start_time"))
-    end = _parse_iso(response.get("finished_at") or response.get("end_time"))
-    operation_name = response.get("operation_name")
-    status_str = (response.get("status") or "").upper()
+    started = _parse_iso(response.get("created"))
+    ended = _parse_iso(response.get("updated"))
+    status_raw = str(response.get("status") or "")
+    errors = [e for e in _as_iterable(response.get("errors")) if isinstance(e, dict)]
 
     trace = Trace(
         metadata=TraceMetadata(
-            session_id=session or _ensure_session_id(interaction_id),
+            session_id=(session_id or response.get("environment_id") or interaction_id),
             platform=Platform.GEMINI,
             platform_version=_PLATFORM_VERSION,
             custom={
                 "interaction_id": interaction_id,
                 "model": model,
-                "operation_name": operation_name,
+                "previous_interaction_id": response.get("previous_interaction_id"),
+                "environment_id": response.get("environment_id"),
             },
         ),
     )
 
-    root_status = _root_status(status_str, operation_name)
     root = Span(
         trace_id=trace.trace_id,
         name=f"gemini.interaction:{interaction_id}",
         kind=SpanKind.AGENT_TURN,
         platform=Platform.GEMINI,
         platform_metadata={"interaction_id": interaction_id, "model": model},
-        start_time=start or _now(),
-        end_time=end,
-        status=root_status,
+        start_time=started or _now(),
+        end_time=ended,
+        status=_STATUS_MAP.get(status_raw, SpanStatus.UNSET),
+        error_message=_first_error_message(errors),
         attributes={
-            "gemini.interaction.id": interaction_id,
-            "gemini.model": model,
-            "gen_ai.system": "gemini",
-            "gen_ai.request.model": str(model) if model else None,
+            "gemini.interaction.status": status_raw,
+            "gemini.errors": errors,
+            **_gen_ai_usage_attrs(response.get("usage"), model),
+            **(
+                {"gemini.system_instruction": response["system_instruction"]}
+                if response.get("system_instruction")
+                else {}
+            ),
         },
+        input_data=response.get("input"),
     )
     trace.spans.append(root)
 
-    # state.tasks → TASK spans (decomposition detector reads `goals`)
-    state = response.get("state") or {}
-    for task in _as_iterable(state.get("tasks")):
-        trace.spans.append(_task_span(task, trace.trace_id, root.span_id))
+    # Steps carry no timestamps of their own, so they inherit the interaction's
+    # start. That is honest about ordering without inventing per-step durations:
+    # falling back to _now() would stamp them with ingestion time instead.
+    step_start = started or root.start_time
+    call_span_by_id: dict[str, str] = {}
 
-    # messages → MESSAGE / USER_INPUT / USER_OUTPUT spans
-    for message in _as_iterable(response.get("messages")):
-        span = _message_span(message, trace.trace_id, root.span_id)
+    for index, step in enumerate(_as_iterable(response.get("steps"))):
+        if not isinstance(step, dict):
+            continue
+        span = _step_span(step, index, trace.trace_id, root.span_id, step_start, call_span_by_id)
         if span is not None:
             trace.spans.append(span)
-
-    # tool_calls → TOOL spans (one pair: call + result)
-    for call in _as_iterable(response.get("tool_calls")):
-        trace.spans.extend(_tool_call_spans(call, trace.trace_id, root.span_id))
-
-    # candidates → LLM spans with safety events
-    usage = response.get("usage_metadata")
-    for idx, candidate in enumerate(_as_iterable(response.get("candidates"))):
-        trace.spans.append(
-            _candidate_span(candidate, idx, usage, model, trace.trace_id, root.span_id)
-        )
-        usage = (
-            None  # Attach usage to the first candidate only; downstream detectors sum per trace.
-        )
 
     return trace
 
 
-def _task_span(task: Any, trace_id: str, parent_id: str) -> Span:
-    task = task if isinstance(task, dict) else {"goal": str(task)}
-    goal = task.get("goal") or task.get("description") or task.get("name")
-    status = _task_status(task.get("status"))
-    return Span(
-        trace_id=trace_id,
-        parent_id=parent_id,
-        name=f"gemini.task:{task.get('id') or goal or 'task'}",
-        kind=SpanKind.TASK,
-        platform=Platform.GEMINI,
-        status=status,
-        attributes={
-            "goals": [goal] if goal else [],
-            "gemini.task.status": task.get("status"),
-        },
-        input_data={"goal": goal},
-        output_data={"result": task.get("result")} if "result" in task else None,
-    )
-
-
-def _message_span(message: Any, trace_id: str, parent_id: str) -> Optional[Span]:
-    if not isinstance(message, dict):
-        return None
-    role = (message.get("role") or "").lower()
-    text = _extract_text(message.get("parts") or message.get("content"))
-    if role == "user":
-        kind = SpanKind.USER_INPUT
-    elif role in ("model", "assistant"):
-        kind = SpanKind.USER_OUTPUT
-    else:
-        kind = SpanKind.MESSAGE
-    return Span(
-        trace_id=trace_id,
-        parent_id=parent_id,
-        name=f"gemini.message:{role or 'unknown'}",
-        kind=kind,
-        platform=Platform.GEMINI,
-        status=SpanStatus.OK,
-        start_time=_parse_iso(message.get("timestamp")) or _now(),
-        attributes={"gemini.message.role": role},
-        output_data={"text": text} if text else None,
-    )
-
-
-def _tool_call_spans(call: Any, trace_id: str, parent_id: str) -> list[Span]:
-    if not isinstance(call, dict):
-        return []
-    call_id = call.get("id") or call.get("tool_call_id")
-    name = call.get("name") or call.get("function_name") or "tool"
-    args = call.get("args") or call.get("arguments")
-    result = call.get("result") or call.get("response")
-    started = _parse_iso(call.get("started_at") or call.get("start_time"))
-    finished = _parse_iso(call.get("finished_at") or call.get("end_time"))
-    errored = bool(call.get("error"))
-
-    call_span = Span(
-        trace_id=trace_id,
-        parent_id=parent_id,
-        name=f"gemini.tool:{name}",
-        kind=SpanKind.TOOL,
-        platform=Platform.GEMINI,
-        status=SpanStatus.ERROR if errored else SpanStatus.OK,
-        error_message=call.get("error") if errored else None,
-        start_time=started or _now(),
-        end_time=finished,
-        attributes={
-            "gemini.tool.name": name,
-            "gemini.tool.call_id": call_id,
-        },
-        input_data={"arguments": args} if args is not None else None,
-        output_data={"result": result} if result is not None else None,
-    )
-    return [call_span]
-
-
-def _candidate_span(
-    candidate: Any,
+def _step_span(
+    step: dict[str, Any],
     index: int,
-    usage: Any,
-    model: Any,
     trace_id: str,
-    parent_id: str,
-) -> Span:
-    candidate = candidate if isinstance(candidate, dict) else {}
-    content = candidate.get("content") or {}
-    text = _extract_text(content.get("parts"))
-    finish_reason = candidate.get("finish_reason")
-    usage_attrs = _gen_ai_usage_attrs(usage, model=model) if usage else {}
+    root_id: str,
+    start_time: datetime,
+    call_span_by_id: dict[str, str],
+) -> Optional[Span]:
+    """Convert one step into a Span, parenting results to their call."""
+    step_type = str(step.get("type") or "unknown")
+    kind = _STEP_KINDS.get(step_type, SpanKind.SYSTEM)
 
+    # A result step answers a call step; `call_id` on the result matches `id` on
+    # the call. Parenting them makes the tool round trip legible instead of two
+    # unrelated siblings.
+    parent_id = root_id
+    if step_type.endswith(_RESULT_SUFFIX):
+        call_id = step.get("call_id")
+        if isinstance(call_id, str):
+            parent_id = call_span_by_id.get(call_id, root_id)
+
+    name = step.get("name") or step_type
     span = Span(
         trace_id=trace_id,
         parent_id=parent_id,
-        name=f"gemini.candidate:{index}",
-        kind=SpanKind.LLM,
+        name=f"gemini.step:{name}",
+        kind=kind,
         platform=Platform.GEMINI,
-        status=_candidate_status(finish_reason),
+        start_time=start_time,
+        status=_step_status(step),
+        error_message=_step_error_message(step),
         attributes={
-            "gemini.candidate.index": index,
-            "gemini.finish_reason": finish_reason,
-            **usage_attrs,
+            "gemini.step.type": step_type,
+            "gemini.step.index": index,
+            **({"gemini.step.name": step["name"]} if step.get("name") else {}),
         },
-        output_data={"text": text} if text else None,
+        input_data=_step_input(step, step_type),
+        output_data=_step_output(step, step_type),
     )
-    for rating in _as_iterable(candidate.get("safety_ratings")):
-        if not isinstance(rating, dict):
-            continue
-        span.events.append(
-            Event(
-                name="safety_check",
-                attributes={
-                    "category": rating.get("category"),
-                    "probability": rating.get("probability"),
-                    "blocked": rating.get("blocked"),
-                },
-            )
-        )
+
+    if not step_type.endswith(_RESULT_SUFFIX) and isinstance(step.get("id"), str):
+        call_span_by_id[step["id"]] = span.span_id
     return span
 
 
-def _extract_text(parts: Any) -> Optional[str]:
-    if parts is None:
+def _step_input(step: dict[str, Any], step_type: str) -> Optional[dict[str, Any]]:
+    if step_type == "user_input":
+        return {"content": step.get("content")}
+    if step_type == "thought":
+        # `summary` is a list of content blocks, not a string.
+        return {"summary": step.get("summary"), "signature": step.get("signature")}
+    if step_type.endswith(_RESULT_SUFFIX):
         return None
-    if isinstance(parts, str):
-        return parts
-    if isinstance(parts, list):
-        chunks = []
-        for part in parts:
-            if isinstance(part, str):
-                chunks.append(part)
-            elif isinstance(part, dict) and "text" in part:
-                chunks.append(str(part["text"]))
-        return "".join(chunks) or None
-    if isinstance(parts, dict) and "text" in parts:
-        return str(parts["text"])
+    # Call steps: `arguments` is already a dict on this API, unlike OpenAI's
+    # JSON-string arguments, so it is passed through rather than parsed.
+    args = step.get("arguments")
+    return {"arguments": args} if args is not None else None
+
+
+def _step_output(step: dict[str, Any], step_type: str) -> Optional[dict[str, Any]]:
+    if step_type == "model_output":
+        return {"content": step.get("content")}
+    if step_type.endswith(_RESULT_SUFFIX):
+        # `result` is a union: a free-form object, a list of content blocks, or a
+        # plain string. It is preserved as-is rather than coerced to text.
+        return {"result": step.get("result")}
+    return None
+
+
+def _step_status(step: dict[str, Any]) -> SpanStatus:
+    if step.get("is_error") is True:
+        return SpanStatus.ERROR
+    # `model_output.error` is a google.rpc Status ({code:int, message, details}),
+    # a different type from the interaction-level Error ({code:str, message}).
+    error = step.get("error")
+    if isinstance(error, dict) and (error.get("code") or error.get("message")):
+        return SpanStatus.ERROR
+    return SpanStatus.OK
+
+
+def _step_error_message(step: dict[str, Any]) -> Optional[str]:
+    error = step.get("error")
+    if isinstance(error, dict) and error.get("message"):
+        return str(error["message"])
+    if step.get("is_error") is True:
+        return _stringify_result(step.get("result"))
+    return None
+
+
+def _stringify_result(result: Any) -> Optional[str]:
+    if result is None:
+        return None
+    if isinstance(result, str):
+        return result
+    return str(result)
+
+
+def _first_error_message(errors: list[dict[str, Any]]) -> Optional[str]:
+    for error in errors:
+        if error.get("message"):
+            return str(error["message"])
     return None
 
 
@@ -299,62 +335,23 @@ def _as_iterable(value: Any) -> Iterable[Any]:
         return ()
     if isinstance(value, (list, tuple)):
         return value
-    return (value,)
+    return ()
 
 
 def _parse_iso(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
+    """Parse the ISO-8601 strings the Interactions API uses for time.
+
+    `created` / `updated` are strings such as ``2026-08-12T09:14:02Z``. An
+    earlier version accepted epoch numbers, which this API never sends.
+    """
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    return None
-
-
-def _root_status(status_str: str, operation_name: Any) -> SpanStatus:
-    if operation_name and status_str in ("RUNNING", "PENDING", ""):
-        return SpanStatus.IN_PROGRESS
-    if status_str in ("FAILED", "ERROR"):
-        return SpanStatus.ERROR
-    if status_str == "CANCELLED":
-        return SpanStatus.CANCELLED
-    if status_str == "TIMEOUT":
-        return SpanStatus.TIMEOUT
-    return SpanStatus.OK
-
-
-def _task_status(value: Any) -> SpanStatus:
-    if not value:
-        return SpanStatus.UNSET
-    v = str(value).upper()
-    if v in ("DONE", "COMPLETED", "SUCCESS"):
-        return SpanStatus.OK
-    if v in ("IN_PROGRESS", "RUNNING", "PENDING"):
-        return SpanStatus.IN_PROGRESS
-    if v in ("FAILED", "ERROR"):
-        return SpanStatus.ERROR
-    return SpanStatus.UNSET
-
-
-def _candidate_status(finish_reason: Any) -> SpanStatus:
-    if not finish_reason:
-        return SpanStatus.OK
-    fr = str(finish_reason).upper()
-    if fr in ("STOP", "END_TURN", "FINISHED"):
-        return SpanStatus.OK
-    if fr in ("SAFETY", "BLOCKED", "RECITATION"):
-        return SpanStatus.BLOCKED
-    if fr in ("MAX_TOKENS",):
-        return SpanStatus.TIMEOUT
-    return SpanStatus.OK
-
-
-def _ensure_session_id(interaction_id: str) -> str:
-    return f"gemini-{interaction_id}"
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _now() -> datetime:
