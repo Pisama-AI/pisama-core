@@ -1,0 +1,287 @@
+{
+  "_provenance": {
+    "source": "openai 2.54.0 pydantic models",
+    "generated": "2026-08-11",
+    "how": "Built by instantiating the SDK's own pydantic models (openai.types.beta.threads.Run / RunStep / Message, openai.types.responses.Response) and serialising with model_dump(mode='json'). Pydantic validated every required field, Literal discriminator, and discriminated-union member, so the shape is the vendor's, not the author's.",
+    "no_model_calls": "No OpenAI model was called and no API key is needed. Only the type layer ran, so this fixture adds no vendor dependency to the tests.",
+    "field_values_are_authored": "The SHAPE is the vendor's; the VALUES (ids, text, timings) are authored to make a coherent scenario, exactly as the openai_agents_handoff_trace.json fixture does.",
+    "scenario": "Order-4417 late-shipment refund. lookup_order succeeds, a code_interpreter tool call computes the 50% refund, the assistant posts an interim message, then issue_refund fails with a server_error and the run ends `failed`."
+  },
+  "run": {
+    "id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+    "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+    "cancelled_at": null,
+    "completed_at": null,
+    "created_at": 1754899200,
+    "expires_at": null,
+    "failed_at": 1754899237,
+    "incomplete_details": null,
+    "instructions": "You are a support agent. Look up the order, verify the shipping SLA, and issue a refund when the order shipped late.",
+    "last_error": {
+      "code": "server_error",
+      "message": "The server had an error while processing your request."
+    },
+    "max_completion_tokens": null,
+    "max_prompt_tokens": null,
+    "metadata": {
+      "channel": "support-web"
+    },
+    "model": "gpt-4.1",
+    "object": "thread.run",
+    "parallel_tool_calls": true,
+    "required_action": null,
+    "response_format": null,
+    "started_at": 1754899201,
+    "status": "failed",
+    "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY",
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "name": "lookup_order",
+          "description": "Fetch an order by id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "order_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id"
+            ]
+          },
+          "strict": null
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "name": "issue_refund",
+          "description": "Refund an order.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "order_id": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "order_id",
+              "amount"
+            ]
+          },
+          "strict": null
+        },
+        "type": "function"
+      },
+      {
+        "type": "code_interpreter"
+      }
+    ],
+    "truncation_strategy": null,
+    "usage": {
+      "completion_tokens": 214,
+      "prompt_tokens": 1842,
+      "total_tokens": 2056
+    },
+    "temperature": 1.0,
+    "top_p": 1.0
+  },
+  "steps": [
+    {
+      "id": "step_2NcVpQr8XmLbKtEeAwZdHsYf",
+      "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+      "cancelled_at": null,
+      "completed_at": 1754899205,
+      "created_at": 1754899202,
+      "expired_at": null,
+      "failed_at": null,
+      "last_error": null,
+      "metadata": null,
+      "object": "thread.run.step",
+      "run_id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+      "status": "completed",
+      "step_details": {
+        "tool_calls": [
+          {
+            "id": "call_QmR4tLpXe9BvKcNdWzHsAy",
+            "function": {
+              "arguments": "{\"order_id\": \"4417\"}",
+              "name": "lookup_order",
+              "output": "{\"order_id\": \"4417\", \"status\": \"delivered\", \"total\": 89.99, \"promised_days\": 3, \"actual_days\": 9}"
+            },
+            "type": "function"
+          }
+        ],
+        "type": "tool_calls"
+      },
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY",
+      "type": "tool_calls",
+      "usage": {
+        "completion_tokens": 41,
+        "prompt_tokens": 612,
+        "total_tokens": 653
+      }
+    },
+    {
+      "id": "step_8FkWnJt5QcRmXbLdVpSaEz",
+      "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+      "cancelled_at": null,
+      "completed_at": 1754899219,
+      "created_at": 1754899206,
+      "expired_at": null,
+      "failed_at": null,
+      "last_error": null,
+      "metadata": null,
+      "object": "thread.run.step",
+      "run_id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+      "status": "completed",
+      "step_details": {
+        "tool_calls": [
+          {
+            "id": "call_Xr7NmKp2Vb8LtQcEeWdZsA",
+            "code_interpreter": {
+              "input": "promised, actual = 3, 9\nsla_breach_days = actual - promised\nrefund = round(89.99 * 0.5, 2) if sla_breach_days >= 5 else 0.0\nprint(sla_breach_days, refund)",
+              "outputs": [
+                {
+                  "logs": "6 45.0\n",
+                  "type": "logs"
+                },
+                {
+                  "image": {
+                    "file_id": "file-Lq3ZnVt7Rb5KcXmEeWpDsA"
+                  },
+                  "type": "image"
+                }
+              ]
+            },
+            "type": "code_interpreter"
+          }
+        ],
+        "type": "tool_calls"
+      },
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY",
+      "type": "tool_calls",
+      "usage": {
+        "completion_tokens": 98,
+        "prompt_tokens": 704,
+        "total_tokens": 802
+      }
+    },
+    {
+      "id": "step_3JhTnQr9XmVbKpLdEeWzAc",
+      "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+      "cancelled_at": null,
+      "completed_at": 1754899224,
+      "created_at": 1754899220,
+      "expired_at": null,
+      "failed_at": null,
+      "last_error": null,
+      "metadata": null,
+      "object": "thread.run.step",
+      "run_id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+      "status": "completed",
+      "step_details": {
+        "message_creation": {
+          "message_id": "msg_5BwYnJt3QcRmXeKdLpVaSzHo"
+        },
+        "type": "message_creation"
+      },
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY",
+      "type": "message_creation",
+      "usage": {
+        "completion_tokens": 52,
+        "prompt_tokens": 418,
+        "total_tokens": 470
+      }
+    },
+    {
+      "id": "step_6PmYcKt4Rb8NvXqLdEeWzH",
+      "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+      "cancelled_at": null,
+      "completed_at": null,
+      "created_at": 1754899225,
+      "expired_at": null,
+      "failed_at": 1754899237,
+      "last_error": {
+        "code": "server_error",
+        "message": "The server had an error while processing your request."
+      },
+      "metadata": null,
+      "object": "thread.run.step",
+      "run_id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+      "status": "failed",
+      "step_details": {
+        "tool_calls": [
+          {
+            "id": "call_Ze8QmRt3Xp7LbKcNvWdHsY",
+            "function": {
+              "arguments": "{\"order_id\": \"4417\", \"amount\": 45.0}",
+              "name": "issue_refund",
+              "output": null
+            },
+            "type": "function"
+          }
+        ],
+        "type": "tool_calls"
+      },
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY",
+      "type": "tool_calls",
+      "usage": null
+    }
+  ],
+  "thread_messages": [
+    {
+      "id": "msg_1AqZxKr6PbTnVeLdWmSyHcUg",
+      "assistant_id": null,
+      "attachments": null,
+      "completed_at": null,
+      "content": [
+        {
+          "text": {
+            "annotations": [],
+            "value": "Order 4417 arrived six days after the promised date. Can you check it and refund me if it shipped late?"
+          },
+          "type": "text"
+        }
+      ],
+      "created_at": 1754899188,
+      "incomplete_at": null,
+      "incomplete_details": null,
+      "metadata": null,
+      "object": "thread.message",
+      "role": "user",
+      "run_id": null,
+      "status": "completed",
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY"
+    },
+    {
+      "id": "msg_5BwYnJt3QcRmXeKdLpVaSzHo",
+      "assistant_id": "asst_9HxN3rQvBs7KtLpEeUwGmZaC",
+      "attachments": null,
+      "completed_at": null,
+      "content": [
+        {
+          "text": {
+            "annotations": [],
+            "value": "Order 4417 was delivered 6 days past the 3-day SLA, so a 50% refund of $45.00 applies. Processing that now."
+          },
+          "type": "text"
+        }
+      ],
+      "created_at": 1754899224,
+      "incomplete_at": null,
+      "incomplete_details": null,
+      "metadata": null,
+      "object": "thread.message",
+      "role": "assistant",
+      "run_id": "run_7TqLm2XeRb9AvKdNpWzHsYcF",
+      "status": "completed",
+      "thread_id": "thread_kV2p8QoR1sWnA4bXcTfLmZdY"
+    }
+  ]
+}

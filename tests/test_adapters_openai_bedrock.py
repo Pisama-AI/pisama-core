@@ -1,14 +1,31 @@
 """Tests for OpenAI and Bedrock trace ingestion adapters.
 
-These adapters restore Pisama's "vendor neutral" claim. Each test feeds the
-adapter a payload matching the documented JSON shape of its source API and
-asserts that the resulting Trace has the expected structure. No SDK imports
-required.
+Two kinds of test live here, and the difference matters.
+
+The hand-written classes below feed the adapter a payload an author believed
+matched the source API. That belief is not always correct: two of them are now
+known to assert shapes their vendor cannot emit (see the warnings on
+`test_code_interpreter_step_preserves_structured_outputs` and
+`test_tool_observation_is_parented_to_invocation`). A passing hand-written test
+is evidence about the adapter's internals, not about the integration.
+
+`TestOpenAIAgainstRealSDKPayloads` and `TestBedrockAgainstRealServiceModel` are
+the ones that speak to the integration. They run against committed fixtures
+whose every key comes from the vendor itself — the `openai` package's own
+pydantic models, and the `bedrock-agent-runtime` service model that botocore
+ships. Regenerate them with `tests/fixtures/capture/`; the recipe and its
+guarantees are documented in `tests/fixtures/capture/README.md`.
 """
+
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from pisama_core.adapters.bedrock import parse_invoke_agent
 from pisama_core.adapters.openai import parse_assistants_run, parse_response
 from pisama_core.traces.enums import Platform, SpanKind, SpanStatus
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class TestOpenAIAssistantsAdapter:
@@ -74,6 +91,15 @@ class TestOpenAIAssistantsAdapter:
     def test_code_interpreter_step_preserves_structured_outputs(self):
         """Code-interpreter outputs are structured {type: logs|image, ...}
         blocks; the adapter must preserve them rather than collapse to str().
+
+        WARNING: this payload cannot occur. `RunStep.type` is
+        `Literal["message_creation", "tool_calls"]`, so a step whose `type` is
+        `"code_interpreter"` is rejected by the SDK's own model. Real code
+        interpreter usage arrives as a `CodeInterpreterToolCall` *inside* a
+        `tool_calls` step, which the adapter drops entirely.
+        `TestOpenAIAgainstRealSDKPayloads` covers the real shape. This test is
+        retained only because it pins the behaviour of the (unreachable) branch
+        at openai.py:151-176; it is not evidence the integration works.
         """
         run = {
             "id": "run_ci",
@@ -231,7 +257,15 @@ class TestBedrockAdapter:
         assert gr.status == SpanStatus.BLOCKED
 
     def test_tool_observation_is_parented_to_invocation(self):
-        """bedrock.tool.output should be a child of bedrock.tool, not a sibling."""
+        """bedrock.tool.output should be a child of bedrock.tool, not a sibling.
+
+        WARNING: this payload cannot occur. `OrchestrationTrace` is declared
+        `"union": true` in the `bedrock-agent-runtime` service model, so
+        `invocationInput` and `observation` can never share one trace node.
+        Against real payloads they arrive as separate nodes and the parenting
+        this test asserts is unreachable. Retained to pin the branch's
+        behaviour, not as evidence the integration works.
+        """
         traces = [
             {
                 "trace": {
@@ -286,3 +320,138 @@ class TestBedrockAdapter:
         trace = parse_invoke_agent(session_id="s", agent_id="a", traces=traces)
         custom = [s for s in trace.spans if s.name == "bedrock.custom_orchestration"]
         assert len(custom) == 1
+
+
+class TestOpenAIAgainstRealSDKPayloads:
+    """Run the adapter against payloads the `openai` package itself produced.
+
+    Every key here came from instantiating the SDK's own pydantic models and
+    dumping them, so pydantic rejected any shape the API cannot return. That is
+    the difference between these tests and the hand-written ones above.
+    """
+
+    @staticmethod
+    def _assistants():
+        return json.loads((FIXTURES / "openai_assistants_run.json").read_text())
+
+    @staticmethod
+    def _responses():
+        return json.loads((FIXTURES / "openai_responses_api.json").read_text())
+
+    def test_real_assistants_run_parses(self):
+        payload = self._assistants()
+        trace = parse_assistants_run(
+            payload["run"], steps=payload["steps"], thread_messages=payload["thread_messages"]
+        )
+        assert trace.metadata.platform == Platform.OPENAI
+        assert trace.spans[0].kind == SpanKind.AGENT
+        # The run failed, so the root must carry that.
+        assert trace.spans[0].status == SpanStatus.ERROR
+        assert any(s.kind == SpanKind.TOOL for s in trace.spans)
+
+    def test_real_assistants_run_step_types_are_only_what_the_sdk_can_emit(self):
+        """RunStep.type is Literal["message_creation", "tool_calls"].
+
+        The adapter also branches on "code_interpreter" at step level, which the
+        SDK's model rejects. This pins the real vocabulary so that branch cannot
+        be mistaken for a supported path.
+        """
+        steps = self._assistants()["steps"]
+        assert {s["type"] for s in steps} <= {"message_creation", "tool_calls"}
+
+    def test_real_code_interpreter_tool_call_keeps_its_payload(self):
+        payload = self._assistants()
+        trace = parse_assistants_run(payload["run"], steps=payload["steps"])
+        ci = [s for s in trace.spans if "code_interpreter" in s.name]
+        assert ci, "expected a code_interpreter tool span"
+        # The executed source and its structured outputs must both survive.
+        assert ci[0].input_data.get("input")
+        assert ci[0].output_data.get("outputs")
+
+    def test_real_responses_api_parses(self):
+        trace = parse_response(self._responses())
+        assert trace.metadata.platform == Platform.OPENAI
+        assert any(s.kind == SpanKind.TOOL for s in trace.spans)
+
+    def test_function_call_output_really_can_appear_in_response_output(self):
+        """Guards a branch a prior audit suspected was dead. It is not.
+
+        ResponseFunctionToolCallOutputItem is a member of the ResponseOutputItem
+        union, so openai.py's "function_call_output" branch is reachable.
+        """
+        output_types = {item["type"] for item in self._responses()["output"]}
+        assert "function_call_output" in output_types
+        trace = parse_response(self._responses())
+        assert any(s.name.startswith("openai.tool_output") for s in trace.spans)
+
+    def test_real_responses_api_token_usage_is_recorded(self):
+        payload = self._responses()
+        trace = parse_response(payload)
+        attrs = trace.spans[0].attributes
+        assert attrs.get("gen_ai.usage.input_tokens") == payload["usage"]["input_tokens"]
+
+
+class TestBedrockAgainstRealServiceModel:
+    """Run the adapter against a payload built from botocore's service model.
+
+    Every key comes from the `bedrock-agent-runtime` shape definitions that
+    botocore ships, and the capture round-trips through botocore's own
+    eventstream decoder, so an invented key would be dropped and the round-trip
+    would not match. See tests/fixtures/capture/README.md.
+    """
+
+    @staticmethod
+    def _fixture():
+        return json.loads((FIXTURES / "bedrock_invoke_agent_trace.json").read_text())
+
+    def _parse(self, scenario):
+        payload = self._fixture()
+        request = payload["invoke_agent_request"]
+        events = payload["scenarios"][scenario]["completion_events"]
+        return parse_invoke_agent(
+            session_id=request["sessionId"],
+            agent_id=request["agentId"],
+            traces=[event["trace"] for event in events],
+        )
+
+    def test_real_orchestration_stream_parses(self):
+        trace = self._parse("success")
+        assert trace.metadata.platform == Platform.BEDROCK
+        kinds = {s.kind for s in trace.spans}
+        assert SpanKind.TOOL in kinds
+        assert SpanKind.LLM in kinds
+
+    def test_real_failure_trace_sets_root_error(self):
+        trace = self._parse("failure")
+        assert trace.spans[0].status == SpanStatus.ERROR
+
+    def test_real_spans_carry_the_timestamps_the_service_model_provides(self):
+        """Spans must be stamped from the payload, not from ingestion time.
+
+        Not every node carries a duration: `TracePart.eventTime` is a point in
+        time, and only some nodes nest a `metadata` start/end pair. So end_time
+        is legitimately None for point events. What must never happen is a span
+        timed to when Pisama happened to parse it.
+        """
+        payload = self._fixture()
+        events = payload["scenarios"]["success"]["completion_events"]
+        stamps = sorted(e["trace"]["eventTime"] for e in events)
+        earliest = datetime.fromisoformat(stamps[0].replace("Z", "+00:00"))
+        latest = datetime.fromisoformat(stamps[-1].replace("Z", "+00:00"))
+
+        trace = self._parse("success")
+        for span in trace.spans:
+            assert span.start_time is not None
+            assert earliest <= span.start_time <= latest + timedelta(seconds=30), span.name
+
+        root = trace.spans[0]
+        assert root.start_time == earliest
+        # The root closes on the trace, not on ingestion: a stale _now() here
+        # reported the gap between invocation and parse as agent latency.
+        assert root.end_time is not None
+        assert root.end_time <= latest + timedelta(seconds=30)
+        assert 0 < (trace.duration_ms or 0) < 60_000
+
+    def test_real_model_identifier_is_recorded(self):
+        trace = self._parse("success")
+        assert any("gen_ai.request.model" in s.attributes for s in trace.spans)

@@ -1,0 +1,314 @@
+{
+  "_capture": {
+    "captured_at": "2026-08-11T23:37:36.110482+00:00",
+    "generator": "capture_bedrock.py",
+    "aws_call_made": false,
+    "botocore_version": "1.43.69",
+    "service": "bedrock-agent-runtime",
+    "service_model_api_version": "2023-07-26",
+    "service_model_path": "botocore/data/bedrock-agent-runtime/2023-07-26/service-2.json.gz",
+    "python": "3.11.13",
+    "provenance": "Structure derived from the botocore service model; every structure member name resolved through shapes[...]['members']. Union shapes carry exactly one member per the model's \"union\": true flag. Both streams round-trip byte-identically through botocore's own EventStream decoder + EventStreamJSONParser against the ResponseStream output shape of InvokeAgent.",
+    "note_traceid_bound": "TraceId is declared min 2 / max 16 in the service model, so trace ids here honour that bound.",
+    "note_timestamps": "eventTime / startTime / endTime are serialised in their iso8601 wire form. boto3 hands callers datetime objects for these members."
+  },
+  "invoke_agent_request": {
+    "agentId": "AGT7QJ2X1B",
+    "agentAliasId": "ALS4KD9P2C",
+    "sessionId": "sess-2026-08-11-refund-4417",
+    "enableTrace": true,
+    "inputText": "Where is my refund for order 4417?"
+  },
+  "scenarios": {
+    "success": {
+      "description": "Pre-processing, orchestration LLM call, rationale, an actionGroup tool invocation, its observation, and a finalResponse observation.",
+      "completion_events": [
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:02.481Z",
+            "trace": {
+              "preProcessingTrace": {
+                "modelInvocationInput": {
+                  "traceId": "tr-pre-0001",
+                  "type": "PRE_PROCESSING",
+                  "text": "Human: Categorise the user request: \"Where is my refund for order 4417?\"",
+                  "foundationModel": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                  "promptCreationMode": "DEFAULT",
+                  "parserMode": "DEFAULT",
+                  "inferenceConfiguration": {
+                    "maximumLength": 2048,
+                    "temperature": 0.0,
+                    "topK": 250,
+                    "topP": 1.0,
+                    "stopSequences": [
+                      "</invoke>",
+                      "</answer>",
+                      "</error>"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:03.421Z",
+            "trace": {
+              "preProcessingTrace": {
+                "modelInvocationOutput": {
+                  "traceId": "tr-pre-0002",
+                  "rawResponse": {
+                    "content": "<thinking>Question is in scope for the refund agent.</thinking>\n<category>D</category>"
+                  },
+                  "parsedResponse": {
+                    "isValid": true,
+                    "rationale": "Question is in scope for the refund agent."
+                  },
+                  "metadata": {
+                    "startTime": "2026-08-11T09:14:02.481Z",
+                    "endTime": "2026-08-11T09:14:03.421Z",
+                    "totalTimeMs": 940,
+                    "usage": {
+                      "inputTokens": 1183,
+                      "outputTokens": 42
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:03.431Z",
+            "trace": {
+              "orchestrationTrace": {
+                "modelInvocationInput": {
+                  "traceId": "tr-orc-0001",
+                  "type": "ORCHESTRATION",
+                  "text": "Human: Where is my refund for order 4417?",
+                  "foundationModel": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                  "promptCreationMode": "OVERRIDDEN",
+                  "parserMode": "DEFAULT",
+                  "inferenceConfiguration": {
+                    "maximumLength": 2048,
+                    "temperature": 0.0,
+                    "topK": 250,
+                    "topP": 1.0,
+                    "stopSequences": [
+                      "</invoke>",
+                      "</answer>",
+                      "</error>"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:05.091Z",
+            "trace": {
+              "orchestrationTrace": {
+                "modelInvocationOutput": {
+                  "traceId": "tr-orc-0002",
+                  "rawResponse": {
+                    "content": "<thinking>I need the refund status for order 4417.</thinking>\n<function_calls><invoke><tool_name>refund-actions::get_refund_status</tool_name></invoke></function_calls>"
+                  },
+                  "metadata": {
+                    "startTime": "2026-08-11T09:14:03.431Z",
+                    "endTime": "2026-08-11T09:14:05.091Z",
+                    "totalTimeMs": 1660,
+                    "usage": {
+                      "inputTokens": 2914,
+                      "outputTokens": 118
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:05.101Z",
+            "trace": {
+              "orchestrationTrace": {
+                "rationale": {
+                  "traceId": "tr-orc-0003",
+                  "text": "The customer is asking about a refund for order 4417. I should look up the refund status in the refund action group before answering."
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:05.111Z",
+            "trace": {
+              "orchestrationTrace": {
+                "invocationInput": {
+                  "traceId": "tr-orc-0004",
+                  "invocationType": "ACTION_GROUP",
+                  "actionGroupInvocationInput": {
+                    "actionGroupName": "refund-actions",
+                    "function": "get_refund_status",
+                    "executionType": "LAMBDA",
+                    "parameters": [
+                      {
+                        "name": "orderId",
+                        "type": "string",
+                        "value": "4417"
+                      },
+                      {
+                        "name": "includeTimeline",
+                        "type": "boolean",
+                        "value": "true"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:06.361Z",
+            "trace": {
+              "orchestrationTrace": {
+                "observation": {
+                  "traceId": "tr-orc-0005",
+                  "type": "ACTION_GROUP",
+                  "actionGroupInvocationOutput": {
+                    "text": "{\"orderId\":\"4417\",\"refundState\":\"PENDING_BANK\",\"amount\":\"64.00\",\"currency\":\"USD\",\"initiatedAt\":\"2026-08-06T11:02:00Z\",\"expectedBy\":\"2026-08-13\"}",
+                    "metadata": {
+                      "startTime": "2026-08-11T09:14:05.111Z",
+                      "endTime": "2026-08-11T09:14:06.361Z",
+                      "totalTimeMs": 1250
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:07.901Z",
+            "trace": {
+              "orchestrationTrace": {
+                "observation": {
+                  "traceId": "tr-orc-0006",
+                  "type": "FINISH",
+                  "finalResponse": {
+                    "text": "Your refund of $64.00 for order 4417 was initiated on 6 August and is currently with your bank. You should see it by 13 August.",
+                    "metadata": {
+                      "startTime": "2026-08-11T09:14:06.361Z",
+                      "endTime": "2026-08-11T09:14:07.901Z",
+                      "totalTimeMs": 1540
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "final_answer": "Your refund of $64.00 for order 4417 was initiated on 6 August and is currently with your bank. You should see it by 13 August."
+    },
+    "failure": {
+      "description": "Orchestration LLM call followed by a failureTrace.",
+      "completion_events": [
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:02.481Z",
+            "trace": {
+              "orchestrationTrace": {
+                "modelInvocationInput": {
+                  "traceId": "tr-orc-0001",
+                  "type": "ORCHESTRATION",
+                  "text": "Human: Where is my refund for order 4417?",
+                  "foundationModel": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                  "promptCreationMode": "OVERRIDDEN",
+                  "parserMode": "DEFAULT",
+                  "inferenceConfiguration": {
+                    "maximumLength": 2048,
+                    "temperature": 0.0,
+                    "topK": 250,
+                    "topP": 1.0,
+                    "stopSequences": [
+                      "</invoke>",
+                      "</answer>",
+                      "</error>"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "trace": {
+            "agentId": "AGT7QJ2X1B",
+            "agentAliasId": "ALS4KD9P2C",
+            "agentVersion": "1",
+            "sessionId": "sess-2026-08-11-refund-4417",
+            "eventTime": "2026-08-11T09:14:04.251Z",
+            "trace": {
+              "failureTrace": {
+                "traceId": "tr-fail-0001",
+                "failureCode": 424,
+                "failureReason": "The model output for the orchestration step could not be parsed. Expected a <function_calls> or <answer> block.",
+                "metadata": {
+                  "startTime": "2026-08-11T09:14:02.481Z",
+                  "endTime": "2026-08-11T09:14:04.251Z",
+                  "totalTimeMs": 1770
+                }
+              }
+            }
+          }
+        }
+      ],
+      "final_answer": null
+    }
+  }
+}

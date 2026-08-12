@@ -1,0 +1,135 @@
+{
+  "_provenance": {
+    "source": "openai 2.54.0 pydantic models",
+    "generated": "2026-08-11",
+    "how": "Built by instantiating the SDK's own pydantic models (openai.types.beta.threads.Run / RunStep / Message, openai.types.responses.Response) and serialising with model_dump(mode='json'). Pydantic validated every required field, Literal discriminator, and discriminated-union member, so the shape is the vendor's, not the author's.",
+    "no_model_calls": "No OpenAI model was called and no API key is needed. Only the type layer ran, so this fixture adds no vendor dependency to the tests.",
+    "field_values_are_authored": "The SHAPE is the vendor's; the VALUES (ids, text, timings) are authored to make a coherent scenario, exactly as the openai_agents_handoff_trace.json fixture does.",
+    "scenario": "The same refund, via the Responses API. Output items cover reasoning, function_call, function_call_output (a gateway-timeout error payload) and message; the response itself ends `failed` with a top-level error."
+  },
+  "id": "resp_4XnQmKt7Rb2LvPcEeWdZsAyH",
+  "created_at": 1754899300.0,
+  "error": {
+    "code": "server_error",
+    "message": "The server had an error while processing your request."
+  },
+  "incomplete_details": null,
+  "instructions": "Refund an order when it shipped past the promised SLA.",
+  "metadata": {
+    "channel": "support-web"
+  },
+  "model": "gpt-4.1",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_9WvKmQt4Xb7NpLcEeRdZsA",
+      "summary": [
+        {
+          "text": "The order missed its 3-day SLA by 6 days, which clears the 5-day threshold for a 50% refund. Calling issue_refund.",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "content": null,
+      "encrypted_content": null,
+      "status": "completed"
+    },
+    {
+      "arguments": "{\"order_id\": \"4417\", \"amount\": 45.0}",
+      "call_id": "call_Ze8QmRt3Xp7LbKcNvWdHsY",
+      "name": "issue_refund",
+      "type": "function_call",
+      "id": "fc_2QmRt8Xp5LbKcNvWdHsYeZ",
+      "caller": null,
+      "namespace": null,
+      "status": "completed"
+    },
+    {
+      "id": "fco_7LbKcNvWdHsYeZ2QmRt8Xp",
+      "call_id": "call_Ze8QmRt3Xp7LbKcNvWdHsY",
+      "output": "{\"error\": \"upstream_timeout\", \"detail\": \"payments gateway did not respond within 30s\", \"retryable\": true}",
+      "status": "incomplete",
+      "type": "function_call_output",
+      "caller": null,
+      "created_by": null,
+      "name": null,
+      "namespace": null
+    },
+    {
+      "id": "msg_5NvWdHsYeZ2QmRt8Xp7LbK",
+      "content": [
+        {
+          "annotations": [],
+          "text": "I confirmed order 4417 shipped late and started a $45.00 refund, but the payments gateway timed out before it settled. Nothing has been charged back yet.",
+          "type": "output_text",
+          "logprobs": null
+        }
+      ],
+      "role": "assistant",
+      "status": "incomplete",
+      "type": "message",
+      "phase": null
+    }
+  ],
+  "parallel_tool_calls": true,
+  "temperature": null,
+  "tool_choice": "auto",
+  "tools": [
+    {
+      "name": "issue_refund",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "order_id",
+          "amount"
+        ]
+      },
+      "strict": true,
+      "type": "function",
+      "allowed_callers": null,
+      "defer_loading": null,
+      "description": "Refund an order.",
+      "output_schema": null
+    }
+  ],
+  "top_p": null,
+  "background": null,
+  "completed_at": 1754899331.0,
+  "conversation": null,
+  "max_output_tokens": null,
+  "max_tool_calls": null,
+  "moderation": null,
+  "previous_response_id": null,
+  "prompt": null,
+  "prompt_cache_key": null,
+  "prompt_cache_options": null,
+  "prompt_cache_retention": null,
+  "reasoning": null,
+  "safety_identifier": null,
+  "service_tier": null,
+  "status": "failed",
+  "text": null,
+  "top_logprobs": null,
+  "truncation": null,
+  "usage": {
+    "input_tokens": 1204,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 896
+    },
+    "output_tokens": 188,
+    "output_tokens_details": {
+      "reasoning_tokens": 128
+    },
+    "total_tokens": 1392
+  },
+  "user": null
+}
