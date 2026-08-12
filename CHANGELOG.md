@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-08-12
+
+### Fixed
+
+- The OpenAI Assistants adapter dropped the entire payload of every tool call
+  that was not a `function` call. `_parse_tool_call` read only `call["function"]`,
+  so a real `CodeInterpreterToolCall` produced `{"arguments": None}` /
+  `{"output": None}` while the SDK carried the executed source and its structured
+  outputs. `FileSearchToolCall` lost its results the same way. Each variant's
+  payload is now read from the key named after the variant, and an unrecognised
+  variant is preserved verbatim rather than nulled, so a future OpenAI tool type
+  degrades to "unparsed" instead of "lost".
+
+  **Shape note for consumers:** a non-`function` tool span's `input_data` /
+  `output_data` keys now match the variant. A `code_interpreter` span carries
+  `{"input": ...}` / `{"outputs": [...]}` where it previously carried
+  `{"arguments": None}` / `{"output": None}`. Nothing that held a value before
+  has changed; only always-`None` placeholders were replaced with real data.
+
+- The Responses API's token split was discarded. `_gen_ai_usage_attrs` read only
+  the Assistants spelling (`prompt_tokens` / `completion_tokens`), so a Responses
+  payload reporting `input_tokens` / `output_tokens` emitted only
+  `gen_ai.usage.total_tokens`. Both spellings are now accepted.
+
+- The Bedrock adapter discarded every timestamp the service model provides.
+  `TracePart.eventTime` and the per-node `metadata` start/end pairs were never
+  read, so child spans fell back to ingestion time and carried no `end_time`: a
+  5.4-second invocation reported a duration of 0.053 ms. Spans are now stamped
+  from the payload, and the root span closes on the trace rather than on
+  `_now()`, which had reported the gap between invocation and parse as agent
+  latency.
+
+  `end_time` remains `None` for point-in-time nodes. `eventTime` is an instant
+  and only some nodes nest a duration, so an unknown duration is reported as
+  unknown rather than as zero.
+
+- The Bedrock adapter never emitted the foundation model.
+  `ModelInvocationInput.foundationModel` was read past without being recorded, so
+  no span carried `gen_ai.request.model`. It is now emitted from the
+  `modelInvocationInput` node, which is the only node that can carry it:
+  `OrchestrationTrace` is a union, so input and output always arrive separately.
+
+### Added
+
+- Real-payload test fixtures for the OpenAI and Bedrock adapters, with a
+  documented capture recipe at `tests/fixtures/capture/`. Every key in a fixture
+  comes from the vendor: the OpenAI payloads are built through the `openai`
+  package's own pydantic models, and the Bedrock payload is resolved against the
+  `bedrock-agent-runtime` service model that botocore ships and round-tripped
+  through botocore's own eventstream decoder. No paid API call is made and the
+  test suite gains no vendor dependency.
+
+  All four defects above were found by running the adapters against these
+  payloads for the first time. The previous tests fed the adapters hand-written
+  dictionaries and passed throughout.
+
 ## [1.10.0] - 2026-07-28
 
 ### Added
