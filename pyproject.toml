@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pisama-core"
-version = "1.10.0"
+version = "1.10.1"
 description = "Core detection, scoring, and healing engine for Pisama agent forensics"
 readme = "README.md"
 license = "MIT"
