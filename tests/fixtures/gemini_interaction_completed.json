@@ -1,0 +1,158 @@
+{
+  "_provenance": {
+    "source": "google-genai 2.17.0 pydantic models",
+    "generated": "2026-08-11",
+    "how": "Built by instantiating the SDK's own pydantic models (google.genai._gaos.types.interactions.Interaction and the Step union members) and serialising with model_dump(mode='json'). Pydantic validated every required field, Literal discriminator and open-union member at construction, so the shape is the vendor's, not the author's.",
+    "no_model_calls": "No Gemini model was called and no API key is needed. Only the type layer ran, so this fixture adds no vendor dependency to the tests.",
+    "field_values_are_authored": "The SHAPE is the vendor's; the VALUES (ids, text, timings, token counts) are authored to make a coherent scenario, exactly as the openai_*.json fixtures do.",
+    "shape_guarantee_limits": "google-genai's _gaos BaseModel sets extra='allow', and Step is an OPEN union parsed leniently, so unknown keys are not rejected on the read path. The guarantee covers required fields, Literal discriminators and union membership at CONSTRUCTION time; capture_gemini.py --check adds a strict per-class re-validation because Interaction.model_validate alone would not raise.",
+    "scenario": "Order-4417 late-shipment refund that succeeds. Steps run user_input -> thought -> function_call(lookup_order) -> function_result(is_error=False, object result) -> model_output; usage is fully populated including per-modality breakdowns, and the interaction ends `completed`."
+  },
+  "status": "completed",
+  "model": "gemini-3.6-flash",
+  "id": "interactions/01K9QF7ZC4M2XNVD8TRJ6BPHWA",
+  "created": "2026-08-11T08:00:00Z",
+  "updated": "2026-08-11T08:00:31Z",
+  "system_instruction": "You are a support agent. Look up the order, verify the shipping SLA, and issue a refund when the order shipped later than promised.",
+  "tools": [
+    {
+      "description": "Fetch an order by id.",
+      "name": "lookup_order",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id"
+        ]
+      },
+      "type": "function"
+    },
+    {
+      "description": "Refund an order.",
+      "name": "issue_refund",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "amount_usd": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "order_id",
+          "amount_usd"
+        ]
+      },
+      "type": "function"
+    }
+  ],
+  "usage": {
+    "cached_tokens_by_modality": [
+      {
+        "modality": "text",
+        "tokens": 1280
+      }
+    ],
+    "grounding_tool_count": [
+      {
+        "count": 0,
+        "type": "google_search"
+      }
+    ],
+    "input_tokens_by_modality": [
+      {
+        "modality": "text",
+        "tokens": 1842
+      }
+    ],
+    "output_tokens_by_modality": [
+      {
+        "modality": "text",
+        "tokens": 214
+      }
+    ],
+    "tool_use_tokens_by_modality": [
+      {
+        "modality": "text",
+        "tokens": 57
+      }
+    ],
+    "total_cached_tokens": 1280,
+    "total_input_tokens": 1842,
+    "total_output_tokens": 214,
+    "total_thought_tokens": 96,
+    "total_tokens": 2209,
+    "total_tool_use_tokens": 57
+  },
+  "previous_interaction_id": "interactions/01K9QF4A1JB6ZMSK9DHVT2CXPR",
+  "service_tier": "standard",
+  "steps": [
+    {
+      "content": [
+        {
+          "text": "Order 4417 turned up six days after the date you promised. Can you check it and refund me if it shipped late?",
+          "type": "text"
+        }
+      ],
+      "type": "user_input"
+    },
+    {
+      "signature": "Qk9HVVMtVEhPVUdIVC1TSUdOQVRVUkUtNDQxNw==",
+      "summary": [
+        {
+          "text": "I need the order record before I can judge the SLA. Calling lookup_order with order_id 4417.",
+          "type": "text"
+        }
+      ],
+      "type": "thought"
+    },
+    {
+      "arguments": {
+        "order_id": "4417"
+      },
+      "id": "call_9QF7ZC4M2XNVD8TRJ6BPHW",
+      "name": "lookup_order",
+      "type": "function_call"
+    },
+    {
+      "call_id": "call_9QF7ZC4M2XNVD8TRJ6BPHW",
+      "result": {
+        "order_id": "4417",
+        "status": "delivered",
+        "total_usd": 89.99,
+        "promised_days": 3,
+        "actual_days": 9
+      },
+      "is_error": false,
+      "name": "lookup_order",
+      "type": "function_result"
+    },
+    {
+      "content": [
+        {
+          "text": "Order 4417 was delivered 9 days out against a 3-day promise, so it clears the 5-day threshold for a 50% refund. That is $45.00 back to your original payment method, and it should settle within 3 business days.",
+          "type": "text"
+        }
+      ],
+      "type": "model_output"
+    }
+  ],
+  "generation_config": {
+    "max_output_tokens": 2048,
+    "seed": 7,
+    "thinking_level": "low",
+    "thinking_summaries": "auto"
+  },
+  "labels": {
+    "channel": "support-web",
+    "team": "billing"
+  },
+  "input": "Order 4417 turned up six days after the date you promised.",
+  "output_text": "Order 4417 was delivered 9 days out against a 3-day promise, so it clears the 5-day threshold for a 50% refund. That is $45.00 back to your original payment method, and it should settle within 3 business days."
+}

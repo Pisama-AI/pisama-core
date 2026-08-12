@@ -25,6 +25,7 @@ ours.** How that is enforced depends on what the vendor ships:
 | The SDK's own typed models | `openai_assistants_run.json`, `openai_responses_api.json` | Instances are built through the `openai` package's pydantic models and dumped; pydantic rejects any field or literal the API cannot return |
 | The vendor's published API model | `bedrock_invoke_agent_trace.json` | Keys are resolved against the `bedrock-agent-runtime` service model botocore ships, then the whole stream is round-tripped through botocore's own eventstream decoder |
 | A live run of the framework | `docs/plans/adk-evidence/raw/` (Google ADK) | Verbatim capture of a real execution, including the framework's own OpenTelemetry spans |
+| The SDK's own typed models | `gemini_interaction_*.json` | Instances are built through google-genai's `Interaction` model and dumped; see the caveat below |
 
 None of these call a paid API, and the test suite gains no dependency on any
 vendor package: the fixtures are committed JSON and the tests only read them.
@@ -55,6 +56,25 @@ Each fixture records the exact vendor version it was built from, in
 `_provenance` (OpenAI) or `_capture` (Bedrock). Several findings below are
 version-specific, so check that field before trusting an old fixture.
 
+## Caveat: google-genai is more lenient than the openai models
+
+The OpenAI guarantee is the strong one: pydantic rejects any field or literal the
+API cannot return. `google-genai`'s Interactions models are looser, and
+`capture_gemini.py` compensates rather than pretending otherwise:
+
+- `_gaos.BaseModel` sets `extra="allow"`, so invented keys are accepted.
+- `status`, `model`, `agent` and `service_tier` are open enums
+  (`Union[Literal[...], UnrecognizedStr]`), so an unknown value passes. The
+  `Literal` documents the vocabulary, it does not gate it.
+- Steps parse through `parse_open_union(..., lenient=True)`. An unknown `type`
+  degrades to `UnknownStep`, and a *known* `type` with an invalid body degrades
+  to an unvalidated construct rather than raising.
+
+So `Interaction.model_validate` alone would accept some malformed payloads. The
+script's `--check` mode therefore does two passes: the SDK's real read path, plus
+a strict per-step re-validation through each concrete step class, which does
+raise, and an assertion that no step landed on `UnknownStep`.
+
 ## What a capture is allowed to conclude
 
 If the adapter cannot parse a payload the vendor's own machinery produced, the
@@ -79,9 +99,6 @@ The strict xfails currently recorded in `test_adapters_openai_bedrock.py`:
 
 ## Adapters still without a real-payload fixture
 
-- **`gemini.py`** — targets a "Gemini Interactions API" whose existence has not
-  been confirmed against the `google-genai` package. Confirm the surface is real
-  before writing a fixture for it.
 - **`deep_agents.py`** — consumes LangGraph state checkpoints; capturing them
   needs a graph execution, so it belongs with the ADK-style live-run harness
   rather than this offline pattern.
