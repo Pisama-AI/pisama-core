@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-08-12
+
+### Fixed
+
+- The Gemini Interactions adapter was written against an envelope the API never
+  returned, and parsed a real interaction into almost nothing. Verified against
+  google-genai 2.17.0's own typed `Interaction` (public re-export
+  `google.genai.interactions`; inner `_gaos` SDK 2.4.1-preview.5, OpenAPI
+  v1beta): of everything `parse_interactions_response` read, only `id`, `model`
+  and the word `status` exist.
+
+  It expected `messages[]`, `tool_calls[]`, `candidates[]`, `state.tasks[]`,
+  `session_id`, `created_at` / `finished_at` and
+  `usage_metadata.prompt_token_count`. The real `Interaction` has none of them.
+  The token names in particular belong to `generateContent`, a different Gemini
+  surface, so usage was always empty. **Measured on a real payload: the old
+  adapter produced one bare root span with no usage and no conversation. The
+  rewrite produces six spans.**
+
+  What the API actually provides, and the adapter now reads:
+
+  - `created` / `updated` as ISO-8601 strings, not epoch numbers
+  - `status` lowercase with eight values, including `cancelled`, `incomplete`,
+    `budget_exceeded` and `requires_action`; the adapter uppercased it and knew
+    three
+  - `usage.total_input_tokens` / `total_output_tokens` / `total_tokens`, with
+    thought, cached and tool-use tokens kept under `gemini.usage.*` rather than
+    folded into the standard OTEL keys where they would inflate them
+  - `errors[]` of `{code: str, message}`; there is no top-level `error`
+  - `steps[]`, a union discriminated on `type`: `user_input`, `model_output`,
+    `thought`, `function_call`, `function_result`, plus code-execution,
+    URL-context, MCP, Google Search, File Search and Google Maps call/result
+    pairs
+
+  Result steps are parented to the call they answer, so a tool round trip reads
+  as one exchange. A step's `error` is a google.rpc `Status` (`{code:int}`), a
+  different type from the interaction-level `Error` (`{code:str}`), and is
+  handled as such. Steps carry no timestamps of any kind, so they inherit the
+  interaction's `created` rather than falling back to ingestion time.
+
+  **Shape note for consumers:** the resulting `Trace` is structurally different,
+  because the previous one could not be built from a real response. Anything
+  reading the old span layout should expect the new one. Given the old output
+  was a single empty root, there was nothing useful to depend on.
+
+### Added
+
+- Real-payload fixtures for the Gemini adapter, built through the SDK's own
+  pydantic models, with the capture recipe at `tests/fixtures/capture/`.
+
+  The README records that `google-genai` is more lenient than the `openai`
+  models — `extra="allow"`, open enums, and step unions that degrade rather than
+  raise — so this fixture's guarantee is weaker than the OpenAI one.
+  `capture_gemini.py --check` compensates by re-validating every step strictly
+  through its concrete class and asserting none landed on `UnknownStep`.
+
 ## [1.10.1] - 2026-08-12
 
 ### Fixed
