@@ -161,7 +161,7 @@ from pisama_core import Trace, TraceMetadata, Platform
 trace = Trace(metadata=TraceMetadata(platform=Platform.LANGGRAPH))
 ```
 
-Works with Claude Agent SDK, LangGraph, AutoGen, CrewAI, n8n, Dify, and custom agents.
+Ships trace adapters for OpenAI (Assistants, Responses, Agents SDK), AWS Bedrock, Google Gemini, Google ADK and DeepAgents. Any other platform is supported by constructing a `Trace` directly; the `Platform` enum carries labels for Claude Code, LangGraph, n8n, Dify, OpenClaw and others.
 
 ## Pisama Platform
 
