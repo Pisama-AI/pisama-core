@@ -239,6 +239,10 @@ regression controls are not representative customer-validation evidence.
 
 ## Response contract accounting
 
+Use `pisama>=0.7.0` for validated positional accounting and coverage reporting
+in the wrapper/CLI. Older wrappers may install but lack these reporting
+guarantees. Core-only consumers must interpret the metadata directly.
+
 Communication results include `metadata.response_contract_coverage` version 1.
 Its scope is `eligible_captured_response_pairs`, not business semantics. Every
 supplied span has a positional record: satisfied, violated, unsupported or
