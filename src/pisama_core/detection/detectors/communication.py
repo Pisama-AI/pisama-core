@@ -101,9 +101,28 @@ class CommunicationDetector(BaseDetector):
     async def detect(self, trace: Trace) -> DetectionResult:
         # Own input/output or a message parent establishes a relationship;
         # chronological adjacency alone does not establish communication.
-        by_id = {span.span_id: span for span in trace.spans}
-        checked = 0
+        id_counts: dict[str, int] = {}
         for span in trace.spans:
+            if isinstance(span.span_id, str) and span.span_id:
+                id_counts[span.span_id] = id_counts.get(span.span_id, 0) + 1
+        by_id = {
+            span.span_id: span
+            for span in trace.spans
+            if isinstance(span.span_id, str) and id_counts.get(span.span_id) == 1
+        }
+        records: list[dict[str, Any]] = []
+        detected_result: Optional[DetectionResult] = None
+        checked = 0
+        for index, span in enumerate(trace.spans):
+            record: dict[str, Any] = {
+                "span_index": index,
+                "span_id": span.span_id if isinstance(span.span_id, str) else None,
+                "identity_ambiguous": not span.span_id or id_counts.get(span.span_id, 0) != 1,
+                "status": "unsupported",
+                "contract_kind": None,
+                "reason": "missing_attributable_pair",
+            }
+            records.append(record)
             if span.kind not in {
                 SpanKind.LLM,
                 SpanKind.AGENT,
@@ -113,6 +132,7 @@ class CommunicationDetector(BaseDetector):
                 SpanKind.MESSAGE,
                 SpanKind.HANDOFF,
             }:
+                record.update(status="outside_scope", reason="span_kind_outside_response_scope")
                 continue
             incoming = span.input_data or {}
             outgoing = span.output_data or {}
@@ -122,15 +142,24 @@ class CommunicationDetector(BaseDetector):
             if not isinstance(request, str):
                 parent = by_id.get(span.parent_id) if span.parent_id is not None else None
                 if parent is None or parent.kind not in {SpanKind.MESSAGE, SpanKind.HANDOFF}:
+                    if span.parent_id and id_counts.get(span.parent_id, 0) > 1:
+                        record["reason"] = "ambiguous_parent_identity"
                     continue
                 request = (parent.output_data or {}).get("content")
                 relation = "explicit_message_parent"
             if not isinstance(request, str) or not isinstance(response, str):
                 continue
             if self._literal_contract(request) is None and not self._json_contract(request):
+                record["reason"] = "unsupported_or_ambiguous_contract"
                 continue
             checked += 1
             finding = self._detect_single(request, response)
+            record.update(
+                status="violated" if finding else "satisfied",
+                contract_kind="literal" if self._literal_contract(request) is not None else "json",
+                reason="explicit_contract_checked",
+                relationship=relation,
+            )
             if finding is None:
                 continue
             result = DetectionResult.issue_found(
@@ -155,18 +184,35 @@ class CommunicationDetector(BaseDetector):
                     "span_id": span.span_id,
                 },
             )
-            return result
-        result = DetectionResult.no_issue(self.name)
+            if detected_result is None:
+                detected_result = result
+        result = detected_result or DetectionResult.no_issue(self.name)
         result.detector_version = self.version
         result.confidence = 0.9 if checked else 0.0
-        result.summary = (
-            "Checked explicit contracts satisfied; other intent is unassessed"
-            if checked
-            else "Abstained: no supported attributable response contract"
-        )
+        if not result.detected:
+            result.summary = (
+                "Checked explicit contracts satisfied; other intent is unassessed"
+                if checked
+                else "Abstained: no supported attributable response contract"
+            )
         result.metadata.update(
-            assessment="contract_satisfied" if checked else "abstained",
+            assessment="contract_violated"
+            if result.detected
+            else "contract_satisfied"
+            if checked
+            else "abstained",
             checked_contracts=checked,
             confidence_basis="uncalibrated contract heuristic",
         )
+        result.metadata["response_contract_coverage"] = {
+            "version": 1,
+            "scope": "eligible_captured_response_pairs",
+            "trace_span_count": len(records),
+            "considered_count": sum(row["status"] != "outside_scope" for row in records),
+            "checked_count": checked,
+            "unsupported_count": sum(row["status"] == "unsupported" for row in records),
+            "outside_scope_count": sum(row["status"] == "outside_scope" for row in records),
+            "records": records,
+            "business_semantics_assessed": False,
+        }
         return result
