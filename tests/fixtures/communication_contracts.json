@@ -1,0 +1,13 @@
+[
+  {"request":"Reply with OK.","response":"OK","detected":false},
+  {"request":"Reply with OK.","response":"NO","detected":true},
+  {"request":"Reply with OK.","response":"reply","detected":true},
+  {"request":"Return exactly 'hello world'.","response":"hello world","detected":false},
+  {"request":"Return exactly 'hello world'.","response":"hello","detected":true},
+  {"request":"Return JSON only.","response":"{\"ok\":true}","detected":false},
+  {"request":"Return JSON only.","response":"not JSON","detected":true},
+  {"request":"Return JSON only.","response":"prose {\"ok\":true}","detected":true},
+  {"request":"Summarize this report.","response":"Revenue rose 10%.","detected":false},
+  {"request":"If ready, reply with OK.","response":"not ready","detected":false},
+  {"request":"Explain JSON.","response":"A data format.","detected":false}
+]

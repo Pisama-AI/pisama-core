@@ -222,6 +222,19 @@ The implementation is a single file:
 stdlib-only, daemon-thread send, 2-second timeout, swallows all exceptions.
 Telemetry can never block, slow down, or crash your process.
 
+## Communication detection limits
+
+The communication detector checks narrow, explicit literal-answer and JSON
+response contracts on captured input/output pairs or explicit message-parent
+relationships. It does not infer communication from chronological adjacency,
+nor infer semantic failure from missing instruction verbs or keyword overlap.
+Ambiguous natural-language requests are outside this checker and produce no
+finding; that is abstention, not proof the task succeeded. Quoted literals and
+single uppercase answer tokens are supported only in unconditional reply/return
+instructions. JSON syntax is checked, not arbitrary schemas or business rules.
+Confidence values are heuristic weights, not calibrated probabilities. Authored
+regression controls are not representative customer-validation evidence.
+
 ## License
 
 MIT
