@@ -30,13 +30,28 @@ class CommunicationDetector(BaseDetector):
     realtime_capable = False
 
     @staticmethod
+    def _json_contract(request: str) -> bool:
+        return (
+            re.fullmatch(
+                r"(?:return|reply|respond|output)(?:\s+(?:with|in|only|valid))*\s+json(?:\s+only)?\s*\.?",
+                request.strip(),
+                re.IGNORECASE,
+            )
+            is not None
+        )
+
+    @staticmethod
     def _literal_contract(request: str) -> Optional[str]:
         # Full-match avoids interpreting examples or conditional prose as an
         # unconditional contract. Unquoted literals must be uppercase tokens.
         prefix = r"(?:reply|respond|return|output|say)\s+(?:(?:with|exactly|only)\s+)*"
-        quoted = re.fullmatch(prefix + r"""(["'])(.+?)\1\s*\.?""", request.strip(), re.IGNORECASE)
+        # Exactly one quoted operand; nested/escaped delimiters are outside
+        # this conservative grammar, not additional text inside the literal.
+        quoted = re.fullmatch(
+            prefix + r"""(?:"([^"']+)"|'([^"']+)')\s*\.?""", request.strip(), re.IGNORECASE
+        )
         if quoted:
-            return quoted.group(2)
+            return quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
         command = re.fullmatch(prefix + r"([A-Z][A-Z0-9_-]*)\s*\.?", request.strip(), re.IGNORECASE)
         if command and command.group(1).isupper() and command.group(1) != "JSON":
             return command.group(1)
@@ -59,11 +74,7 @@ class CommunicationDetector(BaseDetector):
             if receiver_response.strip() == expected:
                 return None
             explanation = "Response does not match the explicitly requested literal."
-        elif re.fullmatch(
-            r"(?:return|reply|respond|output)(?:\s+(?:with|in|only|valid))*\s+json(?:\s+only)?\s*\.?",
-            sender_message.strip(),
-            re.IGNORECASE,
-        ):
+        elif self._json_contract(sender_message):
             try:
                 json.loads(receiver_response, parse_constant=_reject_non_json_constant)
                 return None
@@ -89,6 +100,7 @@ class CommunicationDetector(BaseDetector):
         # Own input/output or a message parent establishes a relationship;
         # chronological adjacency alone does not establish communication.
         by_id = {span.span_id: span for span in trace.spans}
+        checked = 0
         for span in trace.spans:
             if span.kind not in {
                 SpanKind.LLM,
@@ -96,6 +108,8 @@ class CommunicationDetector(BaseDetector):
                 SpanKind.AGENT_TURN,
                 SpanKind.CHAIN,
                 SpanKind.USER_OUTPUT,
+                SpanKind.MESSAGE,
+                SpanKind.HANDOFF,
             }:
                 continue
             incoming = span.input_data or {}
@@ -109,6 +123,11 @@ class CommunicationDetector(BaseDetector):
                     continue
                 request = (parent.output_data or {}).get("content")
                 relation = "explicit_message_parent"
+            if not isinstance(request, str) or not isinstance(response, str):
+                continue
+            if self._literal_contract(request) is None and not self._json_contract(request):
+                continue
+            checked += 1
             finding = self._detect_single(request, response)
             if finding is None:
                 continue
@@ -120,6 +139,12 @@ class CommunicationDetector(BaseDetector):
                 fix_instruction="Honor the explicit response contract or clarify it before execution.",
             )
             result.confidence = finding["confidence"]
+            result.detector_version = self.version
+            result.metadata.update(
+                assessment="contract_violated",
+                checked_contracts=checked,
+                confidence_basis="uncalibrated contract heuristic",
+            )
             result.add_evidence(
                 description=finding["summary"],
                 data={
@@ -129,4 +154,17 @@ class CommunicationDetector(BaseDetector):
                 },
             )
             return result
-        return DetectionResult.no_issue(self.name)
+        result = DetectionResult.no_issue(self.name)
+        result.detector_version = self.version
+        result.confidence = 0.9 if checked else 0.0
+        result.summary = (
+            "Checked explicit contracts satisfied; other intent is unassessed"
+            if checked
+            else "Abstained: no supported attributable response contract"
+        )
+        result.metadata.update(
+            assessment="contract_satisfied" if checked else "abstained",
+            checked_contracts=checked,
+            confidence_basis="uncalibrated contract heuristic",
+        )
+        return result
