@@ -120,7 +120,7 @@ class CommunicationDetector(BaseDetector):
             response = outgoing.get("content", outgoing.get("response"))
             relation = "captured_input_output"
             if not isinstance(request, str):
-                parent = by_id.get(span.parent_id)
+                parent = by_id.get(span.parent_id) if span.parent_id is not None else None
                 if parent is None or parent.kind not in {SpanKind.MESSAGE, SpanKind.HANDOFF}:
                     continue
                 request = (parent.output_data or {}).get("content")
