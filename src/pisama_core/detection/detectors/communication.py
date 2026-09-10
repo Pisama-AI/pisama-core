@@ -71,7 +71,9 @@ class CommunicationDetector(BaseDetector):
         expected = self._literal_contract(sender_message)
         kind = "literal_mismatch"
         if expected is not None:
-            if receiver_response.strip() == expected:
+            # Literal contracts compare the exact captured string, including
+            # significant leading/trailing whitespace inside the operand.
+            if receiver_response == expected:
                 return None
             explanation = "Response does not match the explicitly requested literal."
         elif self._json_contract(sender_message):

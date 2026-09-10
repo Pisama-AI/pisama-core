@@ -232,6 +232,8 @@ Ambiguous natural-language requests are outside this checker and produce no
 finding; that is abstention, not proof the task succeeded. Quoted literals and
 single uppercase answer tokens are supported only in unconditional reply/return
 instructions. JSON syntax is checked, not arbitrary schemas or business rules.
+Literal responses are compared exactly, including whitespace inside the quoted
+operand; no trimming is applied to the captured response.
 Confidence values are heuristic weights, not calibrated probabilities. Authored
 regression controls are not representative customer-validation evidence.
 

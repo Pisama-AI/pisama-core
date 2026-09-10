@@ -13,6 +13,16 @@ CASES = json.loads((Path(__file__).parent / "fixtures/communication_contracts.js
 
 
 @pytest.mark.parametrize("quote", ["'", '"'])
+@pytest.mark.parametrize("expected", [" OK ", "OK"])
+def test_literal_whitespace_is_significant(quote, expected):
+    detector = CommunicationDetector()
+    prompt = f"Return exactly {quote}{expected}{quote}."
+    assert detector._detect_single(prompt, expected) is None
+    different = "OK" if expected == " OK " else " OK "
+    assert detector._detect_single(prompt, different) is not None
+
+
+@pytest.mark.parametrize("quote", ["'", '"'])
 @pytest.mark.parametrize("suffix", ["or", "if ready, otherwise"])
 def test_quoted_alternatives_and_conditions_abstain(quote, suffix):
     request = f"Return {quote}OK{quote} {suffix} {quote}NO{quote}."
