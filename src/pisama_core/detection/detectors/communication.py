@@ -182,6 +182,8 @@ class CommunicationDetector(BaseDetector):
                     **finding["evidence"],
                     "relationship": relation,
                     "span_id": span.span_id,
+                    "span_index": index,
+                    "identity_ambiguous": record["identity_ambiguous"],
                 },
             )
             if detected_result is None:
