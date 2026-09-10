@@ -1,280 +1,61 @@
-"""Communication breakdown detector for inter-agent message failures.
+"""Explicit communication-contract violations, not semantic intent inference.
 
-F10: Communication Breakdown Detection (MAST Taxonomy)
-
-Detects when a message between agents is misunderstood or
-misinterpreted, leading to incorrect behavior downstream.
-
-This includes:
-- Intent misalignment (sender meant X, receiver understood Y)
-- Format mismatches (expected JSON, got prose)
-- Semantic misinterpretation (ambiguous language)
-
-Ported from backend/app/detection/communication.py.
+Missing instruction verbs are not evidence of failure. This heuristic abstains
+unless a narrow literal or JSON contract can be checked. Confidence is a
+heuristic weight, not a calibrated probability.
 """
 
 import json
-import logging
 import re
 from typing import Any, Optional
 
 from pisama_core.detection.base import BaseDetector
 from pisama_core.detection.result import DetectionResult, FixType
-from pisama_core.traces.enums import Platform
+from pisama_core.traces.enums import Platform, SpanKind
 from pisama_core.traces.models import Trace
 
-logger = logging.getLogger(__name__)
 
-# Raw execution trace/log patterns -- these are NOT structured messages
-_TRACE_LOG_PATTERNS: list[str] = [
-    r"\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}",
-    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
-    r"\b(?:INFO|DEBUG|WARNING|ERROR)\b\]?\s+",
-    r"RUN\.SH STARTING",
-    r"AUTOGEN_TESTBED_SETTING",
-    r"\*\*\[Preprocessing\]\*\*",
-    r"=== (?:Test write|MetaGPT|Communication Log)",
-]
-
-_STOP_WORDS = frozenset(
-    {
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "to",
-        "of",
-        "in",
-        "for",
-        "on",
-        "with",
-        "at",
-        "by",
-        "from",
-        "and",
-        "or",
-        "but",
-        "not",
-        "no",
-        "if",
-        "it",
-        "i",
-        "you",
-        "we",
-        "they",
-        "he",
-        "she",
-        "this",
-        "that",
-        "will",
-        "can",
-        "do",
-        "does",
-        "did",
-        "has",
-        "have",
-        "had",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "shall",
-        "must",
-        "need",
-    }
-)
+def _reject_non_json_constant(value: str) -> None:
+    raise ValueError("Non-JSON numeric constant")
 
 
 class CommunicationDetector(BaseDetector):
-    """Detects communication breakdown between agents.
-
-    Analyzes message intent, format compliance, and semantic clarity
-    to detect communication failures in inter-agent messaging.
-
-    Span convention:
-        The detector examines consecutive span pairs, treating the first
-        span's ``output_data.content`` as the sender message and the second
-        span's ``output_data.content`` as the receiver response. Span names
-        are used for agent identification.
-    """
+    """Check explicit response contracts on attributable request/response pairs."""
 
     name = "communication"
-    description = "Detects inter-agent communication breakdown"
-    version = "1.2.0"
-    platforms: list[Platform] = []  # All platforms
+    description = "Detects explicit communication contract violations"
+    version = "2.0.0"
+    platforms: list[Platform] = []
     severity_range = (0, 100)
     realtime_capable = False
 
-    # Default thresholds
-    intent_threshold: float = 0.45
-    check_format: bool = True
-    check_ambiguity: bool = True
-
-    # --- Internal helpers (ported faithfully from backend) ---
+    @staticmethod
+    def _json_contract(request: str) -> bool:
+        return (
+            re.fullmatch(
+                r"(?:return|reply|respond|output)(?:\s+(?:with|in|only|valid))*\s+json(?:\s+only)?\s*\.?",
+                request.strip(),
+                re.IGNORECASE,
+            )
+            is not None
+        )
 
     @staticmethod
-    def _detect_expected_format(message: str) -> Optional[str]:
-        """Detect expected response format from the sender's message."""
-        format_hints: dict[str, list[str]] = {
-            "json": [r"\bjson\b", r"\{.*\}", r"format.*json", r"return.*json"],
-            "list": [r"\blist\b", r"enumerate", r"bullet.*point", r"\d+\.\s"],
-            "code": [r"```", r"\bcode\b", r"implement", r"function.*def", r"class\s+\w+"],
-            "markdown": [r"#\s+", r"\*\*.*\*\*", r"##\s+"],
-            "csv": [r"\bcsv\b", r"comma.*separated", r",.*,.*,"],
-        }
-
-        message_lower = message.lower()
-        for fmt, patterns in format_hints.items():
-            for pattern in patterns:
-                if re.search(pattern, message_lower):
-                    return fmt
+    def _literal_contract(request: str) -> Optional[str]:
+        # Full-match avoids interpreting examples or conditional prose as an
+        # unconditional contract. Unquoted literals must be uppercase tokens.
+        prefix = r"(?:reply|respond|return|output|say)\s+(?:(?:with|exactly|only)\s+)*"
+        # Exactly one quoted operand; nested/escaped delimiters are outside
+        # this conservative grammar, not additional text inside the literal.
+        quoted = re.fullmatch(
+            prefix + r"""(?:"([^"']+)"|'([^"']+)')\s*\.?""", request.strip(), re.IGNORECASE
+        )
+        if quoted:
+            return quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
+        command = re.fullmatch(prefix + r"([A-Z][A-Z0-9_-]*)\s*\.?", request.strip(), re.IGNORECASE)
+        if command and command.group(1).isupper() and command.group(1) != "JSON":
+            return command.group(1)
         return None
-
-    @staticmethod
-    def _check_format_compliance(
-        expected_format: Optional[str],
-        response: str,
-    ) -> tuple[bool, str]:
-        """Check if response complies with expected format."""
-        if not expected_format:
-            return True, "No specific format expected"
-
-        if expected_format == "json":
-            try:
-                json.loads(response)
-                return True, "Valid JSON"
-            except json.JSONDecodeError:
-                json_match = re.search(r"\{[^{}]*\}|\[[^\[\]]*\]", response)
-                if json_match:
-                    try:
-                        json.loads(json_match.group())
-                        return True, "JSON found in response"
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-                return False, "Expected JSON but response is not valid JSON"
-
-        if expected_format == "list":
-            list_patterns = [r"^\s*[-\u2022*]\s+", r"^\s*\d+[.)]\s+"]
-            for pattern in list_patterns:
-                if re.search(pattern, response, re.MULTILINE):
-                    return True, "List format detected"
-            return False, "Expected list format but none detected"
-
-        if expected_format == "code":
-            if "```" in response or re.search(r"\bdef\s+\w+|class\s+\w+|function\s+\w+", response):
-                return True, "Code format detected"
-            return False, "Expected code but none detected"
-
-        return True, f"Format check passed for {expected_format}"
-
-    @staticmethod
-    def _detect_ambiguous_language(message: str) -> list[str]:
-        """Detect ambiguous language patterns in a message."""
-        ambiguous_patterns: list[tuple[str, str]] = [
-            (r"\b(it|this|that|these|those)\b(?!\s+is|\s+are|\s+was)", "ambiguous pronoun"),
-            (r"\bsome\s+\w+", "vague quantifier"),
-            (r"\bmaybe|perhaps|possibly|probably\b", "uncertain language"),
-            (r"\betc\.?|and\s+so\s+on|and\s+more\b", "incomplete enumeration"),
-            (r"\bsoon|later|eventually\b", "vague timeline"),
-            (r"\b(good|bad|nice|fine|okay)\b", "subjective descriptor"),
-        ]
-
-        issues: list[str] = []
-        for pattern, issue_type in ambiguous_patterns:
-            if re.search(pattern, message.lower()):
-                issues.append(issue_type)
-
-        return issues
-
-    @staticmethod
-    def _compute_intent_alignment(
-        request: str,
-        response: str,
-        action_taken: Optional[str] = None,
-    ) -> float:
-        """Compute intent alignment between request and response."""
-        request_words = set(request.lower().split())
-        response_words = set(response.lower().split())
-
-        action_verbs = {
-            "create",
-            "update",
-            "delete",
-            "get",
-            "fetch",
-            "send",
-            "process",
-            "analyze",
-            "generate",
-            "search",
-            "find",
-            "calculate",
-            "compare",
-            "summarize",
-            "extract",
-            "transform",
-            "validate",
-            "verify",
-            "confirm",
-            "acknowledge",
-            "respond",
-            "reply",
-            "escalate",
-            "delegate",
-            "forward",
-            "submit",
-            "report",
-            "transfer",
-            "approve",
-            "reject",
-            "notify",
-            "announce",
-            "broadcast",
-            "check",
-            "monitor",
-            "review",
-            "implement",
-            "deploy",
-            "configure",
-            "install",
-            "migrate",
-            "test",
-            "debug",
-            "fix",
-            "resolve",
-            "handle",
-            "execute",
-            "run",
-        }
-
-        request_actions = request_words & action_verbs
-        response_actions = response_words & action_verbs
-
-        if not request_actions:
-            keyword_overlap = len(request_words & response_words) / max(len(request_words), 1)
-            return min(keyword_overlap * 2, 1.0)
-
-        action_match = len(request_actions & response_actions) / len(request_actions)
-
-        negative_indicators = {"error", "failed", "cannot", "unable", "refused", "sorry"}
-        if response_words & negative_indicators:
-            action_match *= 0.5
-
-        return action_match
-
-    @staticmethod
-    def _is_raw_trace(message: str) -> bool:
-        """Check if message is a raw execution trace/log rather than a structured message."""
-        hit_count = sum(1 for p in _TRACE_LOG_PATTERNS if re.search(p, message[:500]))
-        return hit_count >= 2
-
-    # --- Core single-pair detection ---
 
     def _detect_single(
         self,
@@ -284,150 +65,156 @@ class CommunicationDetector(BaseDetector):
         sender_name: Optional[str] = None,
         receiver_name: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """Run communication breakdown detection on a single message pair.
-
-        Returns a dict with detection results if breakdown found, else None.
-        """
-        is_raw = self._is_raw_trace(sender_message)
-
-        # Format check
-        if self.check_format and not is_raw:
-            expected_format = self._detect_expected_format(sender_message)
-            format_ok, format_msg = self._check_format_compliance(
-                expected_format, receiver_response
-            )
-        else:
-            expected_format = None
-            format_ok, format_msg = True, "Format check disabled"
-
-        # Intent alignment
-        intent_alignment = self._compute_intent_alignment(
-            sender_message,
-            receiver_response,
-            receiver_action,
-        )
-        if is_raw and intent_alignment < self.intent_threshold:
-            intent_alignment = self.intent_threshold  # Neutralize for raw traces
-
-        # Ambiguity
-        ambiguities = self._detect_ambiguous_language(sender_message)
-
-        # Detection logic
-        breakdown_type: Optional[str] = None
-        detected = False
-
-        if not format_ok:
-            detected = True
-            breakdown_type = "format_mismatch"
-        elif intent_alignment < self.intent_threshold:
-            detected = True
-            breakdown_type = "intent_mismatch"
-        elif len(ambiguities) >= 4:
-            detected = True
-            breakdown_type = "semantic_ambiguity"
-
-        if not detected:
+        """Check only explicit contracts; abstention does not mean success."""
+        if not isinstance(sender_message, str) or not isinstance(receiver_response, str):
             return None
-
-        # Determine severity, confidence, explanation
-        sender_label = f"'{sender_name}'" if sender_name else "sender"
-        receiver_label = f"'{receiver_name}'" if receiver_name else "receiver"
-
-        if breakdown_type == "format_mismatch":
-            severity = 55
-            confidence = 0.9
-            explanation = format_msg
-            fix = f"Ensure response follows {expected_format} format. Add explicit format instructions."
-        elif breakdown_type == "intent_mismatch":
-            if intent_alignment < 0.2:
-                severity = 75
-            else:
-                severity = 55
-            confidence = 1 - intent_alignment
-
-            # Reduce confidence when keyword overlap is high despite verb mismatch
-            request_words = set(sender_message.lower().split())
-            response_words = set(receiver_response.lower().split())
-            req_content = request_words - _STOP_WORDS
-            resp_content = response_words - _STOP_WORDS
-            if req_content:
-                content_overlap = len(req_content & resp_content) / len(req_content)
-                if content_overlap > 0.3:
-                    confidence *= max(0.4, 1.0 - content_overlap)
-
-            explanation = (
-                f"Response does not align with request intent. "
-                f"Alignment score: {intent_alignment:.1%}"
-            )
-            fix = "Clarify request with specific action verbs and expected outcomes."
+        expected = self._literal_contract(sender_message)
+        kind = "literal_mismatch"
+        if expected is not None:
+            # Literal contracts compare the exact captured string, including
+            # significant leading/trailing whitespace inside the operand.
+            if receiver_response == expected:
+                return None
+            explanation = "Response does not match the explicitly requested literal."
+        elif self._json_contract(sender_message):
+            try:
+                json.loads(receiver_response, parse_constant=_reject_non_json_constant)
+                return None
+            except (json.JSONDecodeError, ValueError):
+                kind = "format_mismatch"
+                explanation = (
+                    "Explicit JSON response contract violated: response is not valid JSON."
+                )
         else:
-            severity = 30
-            confidence = 0.6
-            explanation = f"Ambiguous language detected: {', '.join(ambiguities)}"
-            fix = "Replace ambiguous language with specific references."
-
-        full_explanation = f"Communication from {sender_label} to {receiver_label}: {explanation}"
-
+            return None
         return {
-            "detected": True,
-            "severity": severity,
-            "confidence": confidence,
-            "summary": full_explanation,
-            "fix_instruction": fix,
+            "severity": 55,
+            "confidence": 0.9,
+            "summary": explanation,
             "evidence": {
-                "breakdown_type": breakdown_type,
-                "intent_alignment": round(intent_alignment, 4),
-                "format_ok": format_ok,
-                "format_message": format_msg,
-                "expected_format": expected_format,
-                "ambiguities": ambiguities,
-                "is_raw_trace": is_raw,
+                "breakdown_type": kind,
+                "contract": "literal" if expected is not None else "json",
+                "confidence_basis": "uncalibrated deterministic contract heuristic",
             },
         }
 
-    # --- Trace-level detect (BaseDetector interface) ---
-
     async def detect(self, trace: Trace) -> DetectionResult:
-        """Detect communication breakdown across consecutive span pairs.
-
-        Treats the output of span N as the sender message and the output of
-        span N+1 as the receiver response. Returns the highest-severity finding.
-        """
-        worst: Optional[dict[str, Any]] = None
-        sorted_spans = sorted(trace.spans, key=lambda s: s.start_time)
-
-        for i in range(len(sorted_spans) - 1):
-            sender = sorted_spans[i]
-            receiver = sorted_spans[i + 1]
-
-            sender_output = (sender.output_data or {}).get("content", "")
-            receiver_output = (receiver.output_data or {}).get("content", "")
-
-            if not sender_output or not receiver_output:
+        # Own input/output or a message parent establishes a relationship;
+        # chronological adjacency alone does not establish communication.
+        id_counts: dict[str, int] = {}
+        for span in trace.spans:
+            if isinstance(span.span_id, str) and span.span_id:
+                id_counts[span.span_id] = id_counts.get(span.span_id, 0) + 1
+        by_id = {
+            span.span_id: span
+            for span in trace.spans
+            if isinstance(span.span_id, str) and id_counts.get(span.span_id) == 1
+        }
+        records: list[dict[str, Any]] = []
+        detected_result: Optional[DetectionResult] = None
+        checked = 0
+        for index, span in enumerate(trace.spans):
+            record: dict[str, Any] = {
+                "span_index": index,
+                "span_id": span.span_id if isinstance(span.span_id, str) else None,
+                "identity_ambiguous": not span.span_id or id_counts.get(span.span_id, 0) != 1,
+                "status": "unsupported",
+                "contract_kind": None,
+                "reason": "missing_attributable_pair",
+            }
+            records.append(record)
+            if span.kind not in {
+                SpanKind.LLM,
+                SpanKind.AGENT,
+                SpanKind.AGENT_TURN,
+                SpanKind.CHAIN,
+                SpanKind.USER_OUTPUT,
+                SpanKind.MESSAGE,
+                SpanKind.HANDOFF,
+            }:
+                record.update(status="outside_scope", reason="span_kind_outside_response_scope")
                 continue
-
-            finding = self._detect_single(
-                sender_message=sender_output,
-                receiver_response=receiver_output,
-                sender_name=sender.name,
-                receiver_name=receiver.name,
+            incoming = span.input_data or {}
+            outgoing = span.output_data or {}
+            request = incoming.get("prompt", incoming.get("content"))
+            response = outgoing.get("content", outgoing.get("response"))
+            relation = "captured_input_output"
+            if not isinstance(request, str):
+                parent = by_id.get(span.parent_id) if span.parent_id is not None else None
+                if parent is None or parent.kind not in {SpanKind.MESSAGE, SpanKind.HANDOFF}:
+                    if span.parent_id and id_counts.get(span.parent_id, 0) > 1:
+                        record["reason"] = "ambiguous_parent_identity"
+                    continue
+                request = (parent.output_data or {}).get("content")
+                relation = "explicit_message_parent"
+            if not isinstance(request, str) or not isinstance(response, str):
+                continue
+            if self._literal_contract(request) is None and not self._json_contract(request):
+                record["reason"] = "unsupported_or_ambiguous_contract"
+                continue
+            checked += 1
+            finding = self._detect_single(request, response)
+            record.update(
+                status="violated" if finding else "satisfied",
+                contract_kind="literal" if self._literal_contract(request) is not None else "json",
+                reason="explicit_contract_checked",
+                relationship=relation,
             )
-            if finding and (worst is None or finding["severity"] > worst["severity"]):
-                worst = finding
-
-        if worst is None:
-            return DetectionResult.no_issue(self.name)
-
-        result = DetectionResult.issue_found(
-            detector_name=self.name,
-            severity=worst["severity"],
-            summary=worst["summary"],
-            fix_type=FixType.SWITCH_STRATEGY,
-            fix_instruction=worst["fix_instruction"],
+            if finding is None:
+                continue
+            result = DetectionResult.issue_found(
+                detector_name=self.name,
+                severity=finding["severity"],
+                summary=finding["summary"],
+                fix_type=FixType.SWITCH_STRATEGY,
+                fix_instruction="Honor the explicit response contract or clarify it before execution.",
+            )
+            result.confidence = finding["confidence"]
+            result.detector_version = self.version
+            result.metadata.update(
+                assessment="contract_violated",
+                checked_contracts=checked,
+                confidence_basis="uncalibrated contract heuristic",
+            )
+            result.add_evidence(
+                description=finding["summary"],
+                data={
+                    **finding["evidence"],
+                    "relationship": relation,
+                    "span_id": span.span_id,
+                    "span_index": index,
+                    "identity_ambiguous": record["identity_ambiguous"],
+                },
+            )
+            if detected_result is None:
+                detected_result = result
+        result = detected_result or DetectionResult.no_issue(self.name)
+        result.detector_version = self.version
+        result.confidence = 0.9 if checked else 0.0
+        if not result.detected:
+            result.summary = (
+                "Checked explicit contracts satisfied; other intent is unassessed"
+                if checked
+                else "Abstained: no supported attributable response contract"
+            )
+        result.metadata.update(
+            assessment="contract_violated"
+            if result.detected
+            else "contract_satisfied"
+            if checked
+            else "abstained",
+            checked_contracts=checked,
+            confidence_basis="uncalibrated contract heuristic",
         )
-        result.confidence = worst["confidence"]
-        result.add_evidence(
-            description=worst["summary"],
-            data=worst["evidence"],
-        )
+        result.metadata["response_contract_coverage"] = {
+            "version": 1,
+            "scope": "eligible_captured_response_pairs",
+            "trace_span_count": len(records),
+            "considered_count": sum(row["status"] != "outside_scope" for row in records),
+            "checked_count": checked,
+            "unsupported_count": sum(row["status"] == "unsupported" for row in records),
+            "outside_scope_count": sum(row["status"] == "outside_scope" for row in records),
+            "records": records,
+            "business_semantics_assessed": False,
+        }
         return result
