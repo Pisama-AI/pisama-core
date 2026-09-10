@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-10
+
+### Changed
+
+- Intentionally replace communication detector v1's verb/keyword-overlap intent
+  heuristic with v2's narrow, attributable literal-response and JSON-syntax
+  checks. Chronological adjacency no longer establishes a communication pair.
+  Previously reported intent-mismatch findings can disappear because the old
+  inference was unsupported, not because a task was repaired or validated.
+- Unsupported or ambiguous requests explicitly abstain. A satisfied supported
+  contract does not validate other requests, business semantics, JSON schemas,
+  or the whole trace. Confidence remains an uncalibrated heuristic weight.
+- Literal responses preserve significant whitespace. Duplicate parent identities
+  cannot establish attribution; violation evidence includes supplied-trace span
+  positions and identity ambiguity, not a stable cross-run repair identity.
+
+### Added
+
+- Explicit detector assessment metadata and versioned response-contract
+  accounting: every supplied span is checked, unsupported, or outside scope,
+  with reconciled counts and evaluation continuing after the first finding.
+  Accounting does not copy prompt/response content or certify semantic accuracy.
+- Use `pisama>=0.7.0` for validated positional accounting and honest coverage
+  reporting in the wrapper/CLI. Older wrappers may install but do not provide
+  those reporting guarantees. Core-only consumers must interpret abstention and
+  scope explicitly; this is not a new dependency on the wrapper package.
+
 ## [1.10.3] - 2026-09-08
 
 ### Fixed
