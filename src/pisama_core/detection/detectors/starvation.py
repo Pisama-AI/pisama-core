@@ -184,7 +184,18 @@ class TaskStarvationDetector(BaseDetector):
         # executed as "newsletter_blast") rather than silently dropped
         # work. True starvation requires the executed count to actually
         # fall short of the planned count.
-        if len(executed_tasks) >= len(planned_tasks):
+        #
+        # Distinct, not raw len(): an agent stuck looping on 2 of 5 planned
+        # tasks (executing each 3x = 6 execution spans) must not read as
+        # "6 >= 5, executed enough, no issue" -- that is exactly the
+        # starvation this detector exists to catch, not a paraphrase
+        # mismatch. Dedupe on raw_text (falls back to description) the same
+        # way _extract_planned_tasks already dedupes planned items.
+        distinct_executed = {
+            (t.get("raw_text") or t["description"]).strip().lower()
+            for t in executed_tasks
+        }
+        if len(distinct_executed) >= len(planned_tasks):
             return DetectionResult.no_issue(self.name)
 
         # Calculate severity based on number and ratio of starved tasks
